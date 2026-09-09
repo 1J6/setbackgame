@@ -13,7 +13,7 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
 | `single.js` | Single player vs three computer players. State in `localStorage` (`lis-setback-v2`). |
 | `multi.js` | Multiplayer: lobby, teams, transactions on the room, turn timer + computer takeover, host pause/rematch, chat. |
 | `store.js` | Room storage adapters: Firebase Realtime Database, and a same-browser adapter for `?local=1` testing. |
-| `engine.js` | Rules engine, a function-for-function port of brianberns/Setback (F#). Do not "improve" rules here; compare against the F# source. |
+| `engine.js` | Rules engine, a function-for-function port of brianberns/Setback (F#). Do not "improve" rules here; compare against the F# source. One deliberate house deviation: a bid of four cannot be outbid and ends the auction (the F# dealer "steal" is removed). |
 | `ai.js` | Monte Carlo computer player (samples unseen cards consistent with plays and voids, rolls out with a heuristic policy). |
 | `rules.js` | House scoring: win at 11 only by bidding and making it that deal; 15 any way wins; -6 loses; bidder reaching 11 beats opponent reaching 15 on the same deal. Stats helpers. |
 | `firebase-config.js` | `window.SETBACK_FIREBASE_CONFIG = {...}` from the Firebase console. Multiplayer is disabled while it is `null`. |

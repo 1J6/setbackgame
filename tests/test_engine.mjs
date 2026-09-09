@@ -24,22 +24,28 @@ eq(Auction.legalBids(a), [0, 2, 3, 4], 'legal bids initially');
 a = Auction.addBid(Bid.Two, a);           // West bids 2
 eq(Auction.legalBids(a), [0, 3, 4], 'after 2');
 a = Auction.addBid(Bid.Pass, a);          // North passes
-a = Auction.addBid(Bid.Four, a);          // East bids 4
-eq(Auction.legalBids(a), [0, 4], 'dealer may steal 4');
-eq(Auction.currentBidder(a), Seat.South, 'dealer bids last');
-a = Auction.addBid(Bid.Four, a);          // South steals
-assert(Auction.isComplete(a), 'auction complete');
-eq(a.HighBidder, Seat.South, 'steal takes high bidder');
+a = Auction.addBid(Bid.Four, a);          // East bids 4: nobody can outbid it, auction over
+assert(Auction.isComplete(a), 'a bid of 4 ends the auction');
+eq(a.HighBidder, Seat.East, 'four-bidder is high bidder');
 eq(a.HighBid, 4, 'high bid 4');
-// non-dealer cannot bid 4 over 4
+eq(Auction.playerBids(a), [[0, 2], [1, 0], [2, 4]], 'playerBids chronological');
+// a full round of three bids and a pass by the dealer also completes
 let a2 = Auction.create(Seat.South);
-a2 = Auction.addBid(Bid.Four, a2);
-eq(Auction.legalBids(a2), [0], 'north cannot outbid 4');
+a2 = Auction.addBid(Bid.Three, a2);
+eq(Auction.legalBids(a2), [0, 4], 'only 4 beats 3');
 a2 = Auction.addBid(Bid.Pass, a2);
-eq(Auction.legalBids(a2), [0], 'east cannot outbid 4');
 a2 = Auction.addBid(Bid.Pass, a2);
-eq(Auction.legalBids(a2), [0, 4], 'dealer steal available');
-eq(Auction.playerBids(a2), [[0, 4], [1, 0], [2, 0]], 'playerBids chronological');
+assert(!Auction.isComplete(a2), 'dealer still to bid');
+eq(Auction.currentBidder(a2), Seat.South, 'dealer bids last');
+a2 = Auction.addBid(Bid.Pass, a2);
+assert(Auction.isComplete(a2), 'auction complete after four bids');
+eq(a2.HighBidder, Seat.West, 'three-bidder wins auction');
+// the dealer cannot steal a 4
+let a3 = Auction.create(Seat.South);
+a3 = Auction.addBid(Bid.Pass, a3);
+a3 = Auction.addBid(Bid.Pass, a3);
+a3 = Auction.addBid(Bid.Four, a3);
+assert(Auction.isComplete(a3), 'dealer never gets to bid over a 4');
 
 // --- trick
 let t = Trick.create(Seat.North);

@@ -113,7 +113,9 @@ export const Auction = {
   /// reversed; every consumer here accounts for that).
   create: (dealer) => ({ Dealer: dealer, Bids: [], HighBidder: null, HighBid: Bid.Pass }),
 
-  isComplete: (auction) => auction.Bids.length === NUM_SEATS,
+  /// House rule: a bid of four cannot be outbid (no dealer "steal"), so the
+  /// auction ends as soon as someone bids four.
+  isComplete: (auction) => auction.Bids.length === NUM_SEATS || auction.HighBid === Bid.Four,
 
   currentBidder: (auction) => seatIncr(auction.Bids.length + 1, auction.Dealer),
 
@@ -126,7 +128,6 @@ export const Auction = {
     if (bid < Bid.Two) out.push(Bid.Two);
     if (bid < Bid.Three) out.push(Bid.Three);
     if (bid < Bid.Four) out.push(Bid.Four);
-    else if (auction.Bids.length === NUM_SEATS - 1) out.push(Bid.Four); // dealer can steal a 4-bid
     return out;
   },
 
