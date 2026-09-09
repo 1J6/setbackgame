@@ -1,0 +1,10 @@
+{
+  "name": "setbackgame",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/test_rules.mjs && node tests/test_engine.mjs 20",
+    "bench": "node tests/bench.mjs 100 200 baseline",
+    "serve": "python -m http.server 8765 --bind 127.0.0.1"
+  }
+}

@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Rules of Setback</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1f4d38">
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 18px 18px calc(30px + env(safe-area-inset-bottom));
+    background: #1f4d38; color: #f5f0e4;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px; line-height: 1.5; max-width: 620px; margin: 0 auto;
+  }
+  h1 { font-size: 26px; margin: 8px 0 4px; }
+  h2 { font-size: 19px; margin: 26px 0 6px; color: #f2c14e; }
+  h3 { font-size: 16px; margin: 18px 0 4px; }
+  p, li { margin: 6px 0; }
+  ul { padding-left: 22px; }
+  a { color: #9fe0ff; }
+  .back {
+    display: inline-block; margin: 6px 0 14px; padding: 10px 16px; border-radius: 10px;
+    background: #f5f0e4; color: #0e2a1e; font-weight: 700; text-decoration: none;
+  }
+  table { border-collapse: collapse; margin: 8px 0; }
+  td, th { padding: 4px 12px 4px 0; text-align: left; border-bottom: 1px solid rgba(255,255,255,.15); }
+  .note { font-size: 13px; color: rgba(245,240,228,.72); }
+</style>
+</head>
+<body>
+<a class="back" href="./">‹ Back to the game</a>
+<h1>Rules of Setback</h1>
+<p class="note">Also known as Auction Pitch. These are the rules used by this game, which follow Brian Berns' Setback.</p>
+
+<h2>Players</h2>
+<p>Four players in two partnerships: West and East against North and South. You play South, so North is your partner.</p>
+
+<h2>Cards</h2>
+<p>A standard 52-card deck, aces high. Each player is dealt six cards, so 24 cards are in play and the other 28 sit out each deal. Because of this, you can never be sure that any particular card (even the ace of trump) is in someone's hand.</p>
+
+<h2>The auction</h2>
+<p>Bidding starts with the player to the dealer's left and goes clockwise; each player bids exactly once. A bid is a promise that your side will take at least that many of the four points available in the deal. The possible bids are:</p>
+<ul>
+  <li><b>Pass</b></li>
+  <li><b>Two</b></li>
+  <li><b>Three</b></li>
+  <li><b>Four</b></li>
+</ul>
+<p>Each bid must be higher than the previous high bid, with one exception: the dealer, who bids last, may "steal" a four bid by also bidding four. If all four players pass, the hands are thrown in and the next player deals.</p>
+
+<h2>Play</h2>
+<p>The high bidder leads to the first trick, and the suit of that first card is trump for the whole deal. On each trick you must either follow the suit led or play a trump; only if you have no card of the suit led may you play anything else. The highest trump on a trick wins it; if there is no trump, the highest card of the suit led wins. The winner of a trick leads to the next one. There are six tricks in a deal.</p>
+
+<h2>Scoring</h2>
+<p>Four points are at stake in every deal:</p>
+<table>
+  <tr><th>High</th><td>Won by the side that takes the trick containing the highest trump in play.</td></tr>
+  <tr><th>Low</th><td>Won by the side that takes the trick containing the lowest trump in play.</td></tr>
+  <tr><th>Jack</th><td>Won by the side that takes the jack of trump (if it was dealt).</td></tr>
+  <tr><th>Game</th><td>Won by the side that takes the most "game points" in its tricks (see below). If tied, nobody gets it.</td></tr>
+</table>
+
+<h3>Game points</h3>
+<p>Every captured card counts, whatever its suit:</p>
+<table>
+  <tr><th>Ten</th><td>10</td></tr>
+  <tr><th>Ace</th><td>4</td></tr>
+  <tr><th>King</th><td>3</td></tr>
+  <tr><th>Queen</th><td>2</td></tr>
+  <tr><th>Jack</th><td>1</td></tr>
+  <tr><th>Others</th><td>0</td></tr>
+</table>
+
+<h3>Being set back</h3>
+<p>If the bidding side takes at least as many points as it bid, both sides score whatever they took. If it falls short, the bidding side is "set back": it scores nothing and instead <em>loses</em> the number of points it bid. The other side still scores what it took.</p>
+
+<h3>Winning</h3>
+<p>The first side to reach 11 points wins the game. If both sides reach 11 on the same deal, or are tied at 11 or more, play continues until one side is ahead.</p>
+
+<h2>Tips</h2>
+<ul>
+  <li>A hand with the ace (or king) of a long suit is worth a bid: leading it usually secures High and pulls trumps.</li>
+  <li>The two of trump is precious: if your side takes the trick it is played in, you get Low. Throw it onto a trick your partner is winning.</li>
+  <li>Guard the jack of trump. Play it only when your side is sure to take the trick.</li>
+  <li>Tens are worth 10 game points. Feed them to your partner's winning tricks; never throw one away to an opponent if you can help it.</li>
+  <li>When the opponents are close to 11, bid to keep them from getting the contract, even on a marginal hand.</li>
+</ul>
+
+<h2>About this page</h2>
+<p class="note">Rules, scoring, and the game engine follow <a href="https://www.bernsrite.com/Setback/" target="_blank" rel="noopener">Brian Berns' Setback</a>; his F# engine (<a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">source on GitHub</a>) is ported here to JavaScript. His computer players are a neural network that runs on his server; the computer players here use a Monte Carlo search that runs entirely on your phone, so the page works offline once loaded.</p>
+<p><a class="back" href="./">‹ Back to the game</a></p>
+</body>
+</html>
