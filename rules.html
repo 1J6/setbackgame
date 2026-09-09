@@ -5,32 +5,54 @@
 <title>Rules of Setback</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#1f4d38">
+<meta name="theme-color" content="#0f2a1f">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap">
 <style>
-  :root { color-scheme: dark; }
-  body {
-    margin: 0; padding: 18px 18px calc(30px + env(safe-area-inset-bottom));
-    background: #1f4d38; color: #f5f0e4;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    font-size: 16px; line-height: 1.5; max-width: 620px; margin: 0 auto;
+  :root {
+    color-scheme: dark;
+    --felt: #1d5a40; --felt-light: #276b4d; --felt-dark: #143d2c; --ink: #0b1d15;
+    --cream: #f3ecdc; --ivory: #faf6ec; --muted: rgba(243, 236, 220, 0.62); --brass: #d9b45a;
+    --line: rgba(255, 255, 255, 0.12);
   }
-  h1 { font-size: 26px; margin: 8px 0 4px; }
-  h2 { font-size: 19px; margin: 26px 0 6px; color: #f2c14e; }
-  h3 { font-size: 16px; margin: 18px 0 4px; }
+  html { background: var(--felt-dark); }
+  body {
+    margin: 0; padding: 22px 20px calc(36px + env(safe-area-inset-bottom));
+    min-height: 100vh;
+    background-color: var(--felt);
+    background-image: radial-gradient(120% 60% at 50% 0%, var(--felt-light) 0%, var(--felt) 45%, var(--felt-dark) 100%);
+    background-attachment: fixed;
+    color: var(--cream);
+    font-family: "Source Sans 3", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16.5px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 600px; margin: 0 auto; }
+  h1, h2, h3 { font-family: "Fraunces", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+  h1 { font-size: 34px; margin: 10px 0 6px; }
+  h2 { font-size: 22px; margin: 34px 0 8px; padding-top: 18px; border-top: 1px solid var(--line); }
+  h3 { font-size: 17px; margin: 20px 0 4px; }
   p, li { margin: 6px 0; }
   ul { padding-left: 22px; }
-  a { color: #9fe0ff; }
+  li::marker { color: var(--brass); }
+  a { color: var(--cream); text-decoration: underline; text-decoration-color: rgba(255,255,255,.3); text-underline-offset: 3px; }
+  .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brass); margin: 0; }
   .back {
-    display: inline-block; margin: 6px 0 14px; padding: 10px 16px; border-radius: 10px;
-    background: #f5f0e4; color: #0e2a1e; font-weight: 700; text-decoration: none;
+    display: inline-block; margin: 4px 0 16px; padding: 9px 14px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.22); color: var(--cream); font-weight: 600; font-size: 14px; text-decoration: none;
   }
-  table { border-collapse: collapse; margin: 8px 0; }
-  td, th { padding: 4px 12px 4px 0; text-align: left; border-bottom: 1px solid rgba(255,255,255,.15); }
-  .note { font-size: 13px; color: rgba(245,240,228,.72); }
+  .back.solid { background: var(--ivory); color: var(--ink); border-color: transparent; margin-top: 18px; }
+  table { border-collapse: collapse; margin: 10px 0; width: 100%; }
+  td, th { padding: 7px 12px 7px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+  th { font-family: "Fraunces", Georgia, serif; font-weight: 600; white-space: nowrap; width: 1%; padding-right: 18px; }
+  .note { font-size: 14px; color: var(--muted); }
 </style>
 </head>
 <body>
+<main>
 <a class="back" href="./">‹ Back to the game</a>
+<p class="eyebrow">Setback · Auction Pitch</p>
 <h1>Rules of Setback</h1>
 <p class="note">Also known as Auction Pitch. These are the rules used by this game, which follow Brian Berns' Setback.</p>
 
@@ -90,6 +112,7 @@
 
 <h2>About this page</h2>
 <p class="note">Rules, scoring, and the game engine follow <a href="https://www.bernsrite.com/Setback/" target="_blank" rel="noopener">Brian Berns' Setback</a>; his F# engine (<a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">source on GitHub</a>) is ported here to JavaScript. His computer players are a neural network that runs on his server; the computer players here use a Monte Carlo search that runs entirely on your phone, so the page works offline once loaded.</p>
-<p><a class="back" href="./">‹ Back to the game</a></p>
+<p><a class="back solid" href="./">‹ Back to the game</a></p>
+</main>
 </body>
 </html>
