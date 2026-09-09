@@ -49,10 +49,17 @@ async function firebaseStore(cfg) {
         presence(pid) {
           const c = ref.child('players/' + pid + '/connected');
           c.onDisconnect().set(false);
-          c.set(true);
-          const again = () => { if (document.visibilityState === 'visible') c.set(true); };
+          // A plain set()/update() anywhere under the room aborts any transaction this
+          // client has in flight on the room (the SDK cancels it with reason 'set'),
+          // so presence is written through a transaction too.
+          const mark = () => c.transaction(() => true);
+          mark();
+          const again = () => { if (document.visibilityState === 'visible') mark(); };
           document.addEventListener('visibilitychange', again);
-          return () => { document.removeEventListener('visibilitychange', again); c.onDisconnect().cancel(); c.set(false); };
+          // No write on cleanup: leaving is recorded by the room transaction itself, and
+          // this cleanup runs from the value listener while that transaction is still
+          // pending, so a set(false) here would abort it (the room was never deleted).
+          return () => { document.removeEventListener('visibilitychange', again); c.onDisconnect().cancel(); };
         },
         async get() { return (await ref.get()).val(); },
         // chat lives beside the game state so messages never contend with moves

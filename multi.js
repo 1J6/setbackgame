@@ -39,7 +39,7 @@ const makeCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Mat
 let S = null; // { store, pid, code, ref, room, unsub, stopPresence }
 const ui = {
   dealNo: -1, completed: 0, showTrick: null, trickWinner: null, trickTimer: null,
-  busy: false, noticeId: null, takeoverTimer: null, tick: null, pendingName: null, intent: null,
+  busy: false, noticeId: null, takeoverTimer: null, tick: null, pendingName: null, intent: null, leaving: false,
 };
 
 // ---------------------------------------------------------------- chat
@@ -303,6 +303,7 @@ function detach() {
 
 async function leaveRoom() {
   if (S.ref) {
+    ui.leaving = true; // the local apply of the transaction fires onRoom(null) before it commits
     await tx((room) => {
       if (!room.players || !room.players[S.pid]) return undefined;
       if (room.status === 'lobby') {
@@ -320,6 +321,7 @@ async function leaveRoom() {
       return room;
     });
   }
+  ui.leaving = false;
   detach();
   store(ROOM_KEY, null);
   showChoose();
@@ -434,7 +436,7 @@ function renderLobby(room) {
   setScreenHtml(screenShell('Room',
     `<div class="code-box"><div class="code-big">${room.code}</div>` +
     `<div class="code-actions"><button type="button" class="btn small" data-action="share">Share</button><button type="button" class="btn small secondary" data-action="copy">Copy code</button></div>` +
-    `<p class="sub">Friends open <b>lis.doctor/setback</b>, tap Multiplayer › Join, and enter this code.</p></div>` +
+    `<p class="sub">Friends open <b>setbackgame.com</b>, tap Multiplayer › Join, and enter this code.</p></div>` +
     `<h3>Players <span class="sub">(${ps.length}/4)</span></h3><ul class="players">${list}</ul>` +
     `<h3>Teams</h3><p class="sub">Partners sit across from each other. Two per team.</p>` +
     `<div class="actions">${teamBtn(0)}${teamBtn(1)}` +
@@ -503,7 +505,7 @@ function startGame() {
 function onRoom(room) {
   if (!S) return;
   if (room === null) {
-    if (S.room) { toast('The room was closed'); }
+    if (S.room && !ui.leaving) { toast('The room was closed'); }
     detach(); store(ROOM_KEY, null); showChoose();
     return;
   }
