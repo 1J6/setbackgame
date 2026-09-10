@@ -1,6 +1,7 @@
 // Single-player Setback: you (South) against three computer players.
 import { Bid, Seat, SEAT_NAMES, TEAM_NAMES, TEAM_LONG_NAMES, teamOfSeat, seatIncr, Trick, Playout, OpenDeal, Game } from './engine.js';
-import { chooseAction } from './ai.js';
+import { chooseAction, chooseBid, choosePlay } from './ai.js';
+import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
 import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb } from './view.js';
 
@@ -10,6 +11,7 @@ const OLD_KEY = 'lis-setback-v1';
 const SETTINGS_KEY = 'lis-setback-settings-v1';
 const rng = Math.random;
 const NAMES = ['West', 'North (partner)', 'East', 'You'];
+const COACH_NAMES = ['West', 'your partner', 'East', 'you'];
 
 function load(key) {
   try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : null; } catch { return null; }
@@ -18,7 +20,8 @@ function store(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private mode etc. */ }
 }
 
-let settings = Object.assign({ speed: 'normal', hints: false }, load(SETTINGS_KEY) || {});
+let settings = Object.assign({ speed: 'normal', hints: false, coach: false }, load(SETTINGS_KEY) || {});
+const hintsOn = () => settings.hints || settings.coach;
 const saveSettings = () => store(SETTINGS_KEY, settings);
 
 function freshState() {
@@ -50,7 +53,7 @@ const timing = () => settings.speed === 'fast'
 
 let numWorlds = 200;
 
-const ui = { awaiting: null, hint: null, showTrick: null, trickWinner: null };
+const ui = { awaiting: null, hint: null, coach: null, coachRec: null, showTrick: null, trickWinner: null };
 
 function vm() {
   const deal = pers.game.Deal;
@@ -58,7 +61,7 @@ function vm() {
     mySeat: USER, deal, handCounts: deal.Hands.map((h) => h.length), myHand: deal.Hands[USER],
     names: NAMES, connected: null, teamNames: TEAM_NAMES, teamShort: TEAM_NAMES,
     score: pers.game.Score, gamesWon: pers.gamesWon, sets: pers.stats.total.sets,
-    showTrick: ui.showTrick, trickWinner: ui.trickWinner, awaiting: ui.awaiting, hint: ui.hint,
+    showTrick: ui.showTrick, trickWinner: ui.trickWinner, awaiting: ui.awaiting, hint: ui.hint, coach: ui.coach,
     timerText: null, busy: false, prompt: null,
   };
 }
@@ -70,7 +73,8 @@ async function showMenu() {
   const html = () =>
     `<h2>Single player</h2>` +
     `<div class="actions">` +
-    `<button type="button" class="btn row" data-action="hints"><span>Show hints (★ marks the computer's choice)</span><span>${settings.hints ? 'On' : 'Off'}</span></button>` +
+    `<button type="button" class="btn row" data-action="coach"><span>Coach mode<small>Explains the recommended bid or card, then reviews your choice</small></span><span>${settings.coach ? 'On' : 'Off'}</span></button>` +
+    `<button type="button" class="btn row" data-action="hints"><span>Hints only<small>★ marks the computer's choice, no explanation</small></span><span>${settings.hints ? 'On' : 'Off'}</span></button>` +
     `<button type="button" class="btn row" data-action="speed"><span>Speed</span><span>${settings.speed === 'fast' ? 'Fast' : 'Normal'}</span></button>` +
     `<a class="btn secondary row" href="rules.html" style="text-decoration:none;display:flex"><span>Rules of Setback</span><span>›</span></a>` +
     `<button type="button" class="btn secondary" data-action="home">Back to start (single / multiplayer)</button>` +
@@ -83,7 +87,13 @@ async function showMenu() {
     `The computer players use a Monte Carlo search that runs entirely on your phone. Progress is saved on this device.</p>`;
   while (true) {
     const action = await showSheet(html());
-    if (action === 'hints') { settings.hints = !settings.hints; saveSettings(); if (ui.awaiting && settings.hints) requestHint(); if (!settings.hints) { ui.hint = null; render(); } continue; }
+    if (action === 'hints') { settings.hints = !settings.hints; saveSettings(); if (ui.awaiting && hintsOn()) requestHint(); if (!hintsOn()) { ui.hint = null; render(); } continue; }
+    if (action === 'coach') {
+      settings.coach = !settings.coach; saveSettings();
+      if (settings.coach) { if (ui.awaiting) requestHint(); }
+      else { ui.coach = null; ui.coachRec = null; if (!settings.hints) ui.hint = null; render(); }
+      continue;
+    }
     if (action === 'speed') { settings.speed = settings.speed === 'fast' ? 'normal' : 'fast'; saveSettings(); continue; }
     if (action === 'home') { location.hash = ''; location.reload(); return; }
     if (action === 'newgame') {
@@ -103,14 +113,20 @@ async function showMenu() {
 
 let hintToken = 0;
 async function requestHint() {
-  if (!settings.hints || !ui.awaiting) return;
+  if (!hintsOn() || !ui.awaiting) return;
   const token = ++hintToken;
   await sleep(30);
   if (!ui.awaiting || token !== hintToken) return;
   const info = Game.currentInfoSet(pers.game);
-  const { action } = chooseAction(info, rng, numWorlds);
+  const playing = !!info.Deal.Playout;
+  const rec = playing ? choosePlay(info, rng, numWorlds) : chooseBid(info, rng, numWorlds);
   if (!ui.awaiting || token !== hintToken) return;
-  ui.hint = action;
+  ui.hint = playing ? { card: rec.card } : { bid: rec.bid };
+  if (settings.coach) {
+    const c = playing ? coachPlay(info, rec, COACH_NAMES) : coachBid(info, rec, COACH_NAMES);
+    ui.coach = c.html;
+    ui.coachRec = { rec, short: c.short, playing };
+  }
   render();
 }
 
@@ -119,7 +135,15 @@ function userAction(info) {
     ui.awaiting = {
       type: info.Deal.Playout ? 'play' : 'bid',
       legal: info.LegalActions,
-      resolve: (a) => { ui.awaiting = null; ui.hint = null; hintToken++; resolve(a); },
+      resolve: (a) => {
+        let review = null;
+        if (settings.coach && ui.coachRec) {
+          const { rec, short, playing } = ui.coachRec;
+          review = playing ? reviewPlay(rec, a.card, short) : reviewBid(rec, a.bid, short);
+        }
+        ui.awaiting = null; ui.hint = null; ui.coach = review; ui.coachRec = null; hintToken++;
+        resolve(a);
+      },
     };
     render();
     requestHint();
@@ -170,6 +194,7 @@ async function runDeal() {
     await applyAction(action);
   }
   const cd = pers.game.Deal.ClosedDeal;
+  ui.coach = null; ui.coachRec = null;
   render();
   if (cd.Auction.HighBid === Bid.Pass) {
     await toast('Everyone passed — dealing again', 1500);

@@ -28,7 +28,7 @@ function shuffleInPlace(items, rng) {
 
 /// How much a team gains by taking a trick that contains this card
 /// (or loses by letting the other team take it).
-function secureValue(card, trump) {
+export function secureValue(card, trump) {
   const rank = Card.rank(card);
   let v = gamePoints(rank);
   if (Card.suit(card) === trump) {
@@ -39,7 +39,7 @@ function secureValue(card, trump) {
 }
 
 /// Would this card take the trick as it stands?
-function beatsTrick(card, trick, trump) {
+export function beatsTrick(card, trick, trump) {
   if (!trick.HighPlay) return true;
   const prev = trick.HighPlay.card;
   const suit = Card.suit(card), rank = Card.rank(card);
@@ -51,7 +51,7 @@ function beatsTrick(card, trick, trump) {
 
 /// Highest trump rank that is neither in `hand` nor already played
 /// (it might be in another hand or undealt; we cannot tell).
-function topOutstandingTrump(hand, playout) {
+export function topOutstandingTrump(hand, playout) {
   const trump = playout.Trump;
   const gone = new Set();
   for (const c of hand) if (Card.suit(c) === trump) gone.add(Card.rank(c));
@@ -81,7 +81,7 @@ function suitStrength(hand, suit) {
   return s;
 }
 
-function bestTrumpSuit(hand) {
+export function bestTrumpSuit(hand) {
   let best = -1, bestS = -Infinity;
   for (let suit = 0; suit < NUM_SUITS; suit++) {
     if (!hand.some((c) => Card.suit(c) === suit)) continue;
@@ -91,7 +91,7 @@ function bestTrumpSuit(hand) {
   return best;
 }
 
-function highestOfSuit(hand, suit) {
+export function highestOfSuit(hand, suit) {
   let best = -1;
   for (const c of hand) if (Card.suit(c) === suit && (best < 0 || Card.rank(c) > Card.rank(best))) best = c;
   return best;

@@ -201,6 +201,19 @@ export function renderTable(vm) {
     handEl.dataset.key = handHtml;
   }
 
+  // coach (single-player tutorial text)
+  const coach = $('coach');
+  if (vm.coach) {
+    if (coach.dataset.key !== vm.coach) {
+      coach.innerHTML = `<span class="coach-lbl">Coach</span>${vm.coach}`;
+      coach.dataset.key = vm.coach;
+    }
+    coach.hidden = false;
+  } else {
+    coach.hidden = true;
+    coach.dataset.key = '';
+  }
+
   // prompt
   const prompt = $('prompt');
   prompt.classList.remove('you');
@@ -239,6 +252,7 @@ export function resetTableCache() {
     const sl = $('slotPos' + i); sl.dataset.key = ''; sl.dataset.card = ''; sl.innerHTML = '';
   }
   $('hand').dataset.key = ''; $('hand').innerHTML = '';
+  $('coach').dataset.key = ''; $('coach').hidden = true;
 }
 
 // -------------------------------------------------------------- widgets
