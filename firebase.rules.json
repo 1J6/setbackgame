@@ -9,11 +9,11 @@
         ".validate": "!newData.exists() || newData.hasChildren(['t'])"
       }
     },
-    "online": {
-      ".read": true,
-      "$pid": {
-        ".write": "$pid.matches(/^[a-z0-9]{6,40}$/)",
-        ".validate": "!newData.exists() || newData.isBoolean()"
+    "counts": {
+      "online": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.isNumber()"
       }
     },
     "rooms": {

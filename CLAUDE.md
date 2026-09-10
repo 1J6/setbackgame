@@ -17,6 +17,9 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
 | `engine.js` | Rules engine, a function-for-function port of brianberns/Setback (F#). Do not "improve" rules here; compare against the F# source. One deliberate house deviation: a bid of four cannot be outbid and ends the auction (the F# dealer "steal" is removed). |
 | `ai.js` | Monte Carlo computer player (samples unseen cards consistent with plays and voids, rolls out with a heuristic policy). Self-play A/B findings (Sep 2026, 300-game runs): more sampled worlds is the one reliable strength gain (300 vs 100 worlds won 57%); bid-aware sampling, conservative-bidding knobs, and rollout-policy refinements (Low awareness, trump-in costs, third-hand-high, draw-trump restraint) were all neutral or worse, so keep the policy simple. Bidding is near a self-play equilibrium: most auctions end at 3, and 4-bids are mostly deliberate blocks under the bid-out-at-11 rule. |
 | `coach.js` | Single-player coach mode: plain-language reasons for the AI's recommended bid or card, plus a review of the user's choice against it. Reuses the hand-reading helpers exported by `ai.js`. |
+| `history.js` | Finished games saved on the device as move logs (last 30) plus personal stats computed by replaying them. |
+| `replayview.js` | Replay viewer on the normal table: prev/next move, deal jumps, coach review of the user's moves. Entered from the History screen in app.js. |
+| `share.png` | 1200x630 Open Graph image, rendered by a PowerShell GDI+ script (not checked in); regenerate by hand if the look changes. |
 | `rules.js` | House scoring: win at 11 only by bidding and making it that deal; 15 any way wins; -6 loses; bidder reaching 11 beats opponent reaching 15 on the same deal. Stats helpers. |
 | `firebase-config.js` | `window.SETBACK_FIREBASE_CONFIG = {...}` from the Firebase console. Multiplayer is disabled while it is `null`. |
 | `firebase.rules.json` | Realtime Database security rules to paste into the console. |
@@ -48,9 +51,13 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
   (`bot: true`, names Bot Ada/Max/Ivy) that any client plays for after 1.2 s. Joining a public game in
   progress replaces a computer or a departed (`left`) player and takes that seat. When the last human leaves,
   the room and its index entry are deleted.
-- `online/{pid}` presence powers the "players online" counter on the multiplayer screen. Every client
-  downloads the whole `online` node, which is fine for hundreds and should become a counter before tens of
-  thousands.
+- `counts/online` is a single number for the "players online" line: each connection increments it and
+  registers an onDisconnect decrement, so clients download one value. It can drift slightly after crashes.
+- Single player: deals are seeded and every action is appended to `pers.log`, so a finished game is a move
+  log saved to history. `startSingle({ tutorial: true })` plays a guided first hand on a fixed seed
+  (TUT_SEED in single.js) with only the coach's choice tappable and short sheets at each new moment.
+- Coach mode also exists for code rooms in multiplayer (per-device setting, off by default); host tools:
+  remove a player, fill empty seats with computers. Invite links with a remembered name join directly.
 - Traffic: about 18 bytes per move on the wire, roughly 10 KB per phone per game (the old JSON blob
   design re-sent about 1 KB on every move).
 

@@ -5,7 +5,7 @@ import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
 import { newSeed, seededRng, replay } from './replay.js';
 import { saveGameRecord } from './history.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
-import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml, nextTheme, themeLabel, soundOn, setSoundOn, cue } from './view.js';
+import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml, nextTheme, themeLabel, soundOn, setSoundOn, cue, escapeHtml } from './view.js';
 
 const USER = Seat.South;
 const STORAGE_KEY = 'lis-setback-v2';
@@ -28,8 +28,7 @@ const saveSettings = () => store(SETTINGS_KEY, settings);
 
 // Deals are seeded and every action is appended to `pers.log`, so a finished
 // game is a move log (see replay.js) that can be saved and replayed.
-function createDeal(log, dealer) {
-  const seed = newSeed();
+function createDeal(log, dealer, seed = newSeed()) {
   if (log) log.push({ d: seed, l: dealer, t: Date.now() });
   return Game.create(seededRng(seed), dealer);
 }
@@ -40,11 +39,11 @@ function nextDeal(game, allPass) {
   return Game.startNextDeal(seededRng(seed), game);
 }
 
-function freshState() {
+function freshState(seed = newSeed(), dealer = Seat.South) {
   const log = [];
   return {
     version: 2, gamesWon: [0, 0], finished: null, reason: null,
-    game: createDeal(log, Seat.South), log,
+    game: createDeal(log, dealer, seed), log,
     stats: { game: emptyStats(), total: emptyStats() },
     scoreBefore: [0, 0],
   };
@@ -72,6 +71,48 @@ const timing = () => settings.speed === 'fast'
 let numWorlds = 300;
 
 const ui = { awaiting: null, hint: null, coach: null, coachRec: null, showTrick: null, trickWinner: null };
+
+// ------------------------------------------------------------ tutorial
+// A guided first hand: a fixed deal (you hold A K J 2 of clubs and a ten),
+// short explanations at each new moment, and only the coach's choice tappable.
+const TUT_SEED = 697;
+const tut = { active: false, stage: 0, trickShown: false };
+const tutSheet = (html) => showSheet(html + `<div class="actions"><button type="button" class="btn" data-action="go">Continue</button></div>`);
+
+async function tutorialBeforeTurn(info) {
+  const playing = !!info.Deal.Playout;
+  if (!playing && tut.stage === 0) {
+    tut.stage = 1;
+    await tutSheet(`<h2>Your bid</h2>` +
+      `<p>Each player bids once, in turn: Pass, 2, 3 or 4. A bid promises your team will take at least that many of the four points this deal. Fall short and you lose that many instead: you are <i>set back</i>. A bid of four cannot be outbid.</p>` +
+      `<p>Look at your clubs: the ace is High, the jack is the Jack point, the deuce is a likely Low, and your ten is worth 10 toward Game. That is a hand to bid on. The coach has highlighted the bid to make; tap it.</p>`);
+  } else if (playing && tut.stage === 1) {
+    tut.stage = 2;
+    const p = info.Deal.Playout;
+    const iLead = p.CurrentTrick.Cards.length === 0 && p.Trump === null;
+    await tutSheet(iLead
+      ? `<h2>Your lead</h2><p>You won the bid, so you lead first, and the suit of your first card becomes trump for the whole deal.</p>` +
+        `<p>Lead your highest club. The ace is certain to win High, and everyone must follow with a club if they have one, so it also pulls out their trumps. Tap the highlighted card.</p>`
+      : `<h2>Play</h2><p>${escapeHtml(NAMES[p.Bidder].replace(' (partner)', ''))} won the bid and leads first; the suit of that first card is trump for the deal.</p>` +
+        `<p>On each trick you must follow the suit led if you can, or play a trump. The highest trump wins the trick, otherwise the highest card of the suit led. The winner leads the next trick. Tap the highlighted card; the coach explains why.</p>`);
+  }
+}
+
+async function tutorialAfterTrick(winnerSeat) {
+  if (!tut.active || tut.trickShown) return;
+  tut.trickShown = true;
+  const who = winnerSeat === USER ? 'You' : NAMES[winnerSeat].replace(' (partner)', '');
+  await tutSheet(`<h2>The trick</h2><p>${escapeHtml(who)} took that trick and lead${winnerSeat === USER ? '' : 's'} the next one.</p>` +
+    `<p>The chips at the top show who holds each point so far: High, Low, Jack, and the running Game count. They can change hands until the deal ends, so a low trump is only safe once your side has taken the trick it was played in.</p>` +
+    `<p>Keep tapping the highlighted card. Five more tricks to go.</p>`);
+}
+
+async function tutorialOutro() {
+  tut.active = false;
+  await tutSheet(`<h2>You have played a hand</h2>` +
+    `<p>That is the whole game: bid, name trump with your lead, take the points, and keep score. First team to 11 wins, but only by bidding and making it on the deal that gets there; 15 wins any way; falling to -6 loses.</p>` +
+    `<p>The coach stays on for the rest of this game, and from now on you can tap any legal card, not just its choice. Turn the coach off in the menu whenever you like.</p>`);
+}
 
 function vm() {
   const deal = pers.game.Deal;
@@ -154,12 +195,24 @@ async function requestHint() {
   render();
 }
 
-function userAction(info) {
+async function userAction(info) {
   cue('turn');
+  if (tut.active) await tutorialBeforeTurn(info);
+  let legal = info.LegalActions;
+  if (tut.active && legal.length > 1) {
+    // only the coach's choice can be tapped during the guided hand
+    const playing = !!info.Deal.Playout;
+    const rec = playing ? choosePlay(info, rng, numWorlds) : chooseBid(info, rng, numWorlds);
+    const c = playing ? coachPlay(info, rec, COACH_NAMES) : coachBid(info, rec, COACH_NAMES);
+    ui.hint = playing ? { card: rec.card } : { bid: rec.bid };
+    ui.coach = c.html;
+    ui.coachRec = { rec, short: c.short, playing };
+    legal = legal.filter((a) => (playing ? a.card === rec.card : a.bid === rec.bid));
+  }
   return new Promise((resolve) => {
     ui.awaiting = {
       type: info.Deal.Playout ? 'play' : 'bid',
-      legal: info.LegalActions,
+      legal,
       resolve: (a) => {
         let review = null;
         if (settings.coach && ui.coachRec) {
@@ -171,7 +224,7 @@ function userAction(info) {
       },
     };
     render();
-    requestHint();
+    if (!tut.active) requestHint();
   });
 }
 
@@ -203,6 +256,7 @@ async function applyAction(action) {
     await sleep(t.play);
     ui.trickWinner = trickAfter.HighPlay.seat; render();
     await sleep(t.trickShow);
+    if (tut.active && !tut.trickShown) await tutorialAfterTrick(trickAfter.HighPlay.seat);
     ui.showTrick = null; ui.trickWinner = null; render();
   } else {
     render();
@@ -237,6 +291,7 @@ async function runDeal() {
   }
   await showSheet(dealSummaryHtml(judged, NAMES.map((n) => n.replace(' (partner)', '')), TEAM_LONG_NAMES) +
     `<div class="actions"><button type="button" class="btn" data-action="next">${judged.winner === null ? 'Next deal' : 'See result'}</button></div>`);
+  if (tut.active) await tutorialOutro();
   return judged;
 }
 
@@ -285,7 +340,13 @@ async function runGame() {
   }
 }
 
-export async function startSingle() {
+export async function startSingle(opts = {}) {
+  if (opts.tutorial) {
+    pers = freshState(TUT_SEED, Seat.West); // West deals: North bids first, you bid third
+    save();
+    tut.active = true; tut.stage = 0; tut.trickShown = false;
+    settings.coach = true; saveSettings();
+  }
   showScreen('table');
   resetTableCache();
   $('hand').onclick = (e) => {
@@ -303,6 +364,14 @@ export async function startSingle() {
   $('menuBtn').onclick = () => { if ($('overlay').hidden) showMenu(); };
 
   try {
+    if (opts.tutorial) {
+      render();
+      await tutSheet(`<h2>Learn to play</h2>` +
+        `<p>Setback is a trick-taking card game for four in two teams. You sit at the bottom, South; North, across the table, is your partner.</p>` +
+        `<p>Each deal has three parts: <b>bid</b> for how many of the four points your team will take, <b>play</b> six tricks, then <b>score</b>. ` +
+        `The four points are <b>High</b> and <b>Low</b> (the highest and lowest trump in play), <b>Jack</b> (the jack of trump), and <b>Game</b> (the most card points taken in tricks: tens count 10, aces 4, kings 3, queens 2, jacks 1).</p>` +
+        `<p>The coach will explain each move and highlight what to tap. Let's deal.</p>`);
+    }
     while (true) await runGame();
   } catch (err) {
     console.error(err);

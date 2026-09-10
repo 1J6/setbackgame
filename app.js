@@ -20,6 +20,7 @@ function homeHtml(multiNote) {
     `<div class="actions">` +
     `<button type="button" class="btn big" data-action="single">Single player<small>Three computer players, with an optional coach</small></button>` +
     `<button type="button" class="btn big secondary" data-action="multi">Multiplayer<small>Quick play with anyone, or friends with a code</small></button>` +
+    `<button type="button" class="btn big secondary" data-action="learn">Learn to play<small>A guided first hand with the coach</small></button>` +
     `</div>` +
     (multiNote ? `<p class="error">${multiNote}</p>` : '') +
     `<p class="credit"><a href="#history" data-action="history">History &amp; stats</a> &nbsp;·&nbsp; <a href="rules.html">Rules of Setback</a> &nbsp;·&nbsp; ` +
@@ -44,6 +45,7 @@ function bindHome() {
     const btn = e.target.closest('[data-action]');
     if (!btn) return;
     if (btn.dataset.action === 'single') { location.hash = '#single'; startSingle(); }
+    if (btn.dataset.action === 'learn') { location.hash = '#single'; startSingle({ tutorial: true }); }
     if (btn.dataset.action === 'multi') { location.hash = '#multi'; goMulti(null); }
     if (btn.dataset.action === 'history') { e.preventDefault(); location.hash = '#history'; showHistory(); }
   };

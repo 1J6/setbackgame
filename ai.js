@@ -62,7 +62,7 @@ export function topOutstandingTrump(hand, playout) {
 
 /// Rough strength of a hand if the given suit were trump (used to choose a
 /// trump suit for simulated bidders).
-function suitStrength(hand, suit) {
+export function suitStrength(hand, suit) {
   let s = 0;
   for (const c of hand) {
     const r = Card.rank(c);

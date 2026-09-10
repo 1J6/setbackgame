@@ -41,16 +41,23 @@ async function firebaseStore(cfg) {
       const r = db.ref('open/' + code);
       if (entry) { r.set(entry); r.onDisconnect().remove(); } else { r.onDisconnect().cancel(); r.remove(); }
     },
-    // presence for the "players online" counter; cb(count)
+    // "players online": a single counter, incremented on connect and
+    // decremented by the server when this connection drops, so every client
+    // downloads one number rather than the whole presence list
     online(pid, cb) {
-      const mine = db.ref('online/' + pid);
-      mine.onDisconnect().remove();
-      mine.set(true);
-      const again = () => { if (document.visibilityState === 'visible') mine.set(true); };
-      document.addEventListener('visibilitychange', again);
-      const all = db.ref('online');
-      const h = all.on('value', (s) => cb(s.numChildren()));
-      return () => { document.removeEventListener('visibilitychange', again); all.off('value', h); mine.onDisconnect().cancel(); mine.remove(); };
+      const counter = db.ref('counts/online');
+      const inc = fb.database.ServerValue.increment;
+      let counted = false;
+      const conn = db.ref('.info/connected');
+      const onConn = conn.on('value', (s) => {
+        // each (re)connection counts once; the server undoes it when it drops
+        if (!s.val()) { counted = false; return; }
+        if (counted) return;
+        counted = true;
+        counter.onDisconnect().set(inc(-1)).then(() => counter.set(inc(1)));
+      });
+      const h = counter.on('value', (s) => cb(Math.max(0, Number(s.val()) || 0)));
+      return () => { conn.off('value', onConn); counter.off('value', h); if (counted) { counter.onDisconnect().cancel(); counter.set(inc(-1)); } };
     },
     open(code) {
       const ref = db.ref('rooms/' + code);
