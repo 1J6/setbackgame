@@ -1,5 +1,5 @@
 // Setback entry point: start screen, then single- or multi-player.
-import { setScreenHtml, $ } from './view.js';
+import { setScreenHtml, $, tipHtml } from './view.js';
 import { startSingle } from './single.js';
 import { startMulti } from './multi.js';
 import { makeStore } from './store.js';
@@ -21,6 +21,7 @@ function homeHtml(multiNote) {
     (multiNote ? `<p class="error">${multiNote}</p>` : '') +
     `<p class="credit"><a href="rules.html">Rules of Setback</a> &nbsp;·&nbsp; ` +
     `Engine ported from <a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">Brian Berns' Setback</a></p>` +
+    tipHtml() +
     `</div>`;
 }
 

@@ -47,6 +47,11 @@
   td, th { padding: 7px 12px 7px 0; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
   th { font-family: "Fraunces", Georgia, serif; font-weight: 600; white-space: nowrap; width: 1%; padding-right: 18px; }
   .note { font-size: 14px; color: var(--muted); }
+  .tip { text-align: center; margin: 28px 0 6px; }
+  .tip a {
+    display: inline-block; padding: 9px 16px; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.22); color: var(--cream); font-size: 14px; font-weight: 600; text-decoration: none;
+  }
 </style>
 </head>
 <body>
@@ -99,7 +104,7 @@
 <p>If the bidding side takes at least as many points as it bid, both sides score whatever they took. If it falls short, the bidding side is "set back": it scores nothing and instead <em>loses</em> the number of points it bid. The other side still scores what it took.</p>
 
 <h3>Winning</h3>
-<p>The first side to reach 11 points wins the game. If both sides reach 11 on the same deal, or are tied at 11 or more, play continues until one side is ahead.</p>
+<p>A side wins by reaching 11 points, but only by bidding and making its bid on the deal that gets it there. Reaching 11 on points taken while the other side held the contract does not end the game; you must keep bidding until you make one. A side that reaches 15 points wins regardless of who bid. A side that falls to -6 loses at once. If the bidding side makes its bid to reach 11 on the same deal the other side reaches 15, the bidding side wins.</p>
 
 <h2>Tips</h2>
 <ul>
@@ -112,6 +117,7 @@
 
 <h2>About this page</h2>
 <p class="note">Rules, scoring, and the game engine follow <a href="https://www.bernsrite.com/Setback/" target="_blank" rel="noopener">Brian Berns' Setback</a>; his F# engine (<a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">source on GitHub</a>) is ported here to JavaScript. His computer players are a neural network that runs on his server; the computer players here use a Monte Carlo search that runs entirely on your phone, so the page works offline once loaded.</p>
+<p class="tip"><a href="https://buymeacoffee.com/1j6dev" target="_blank" rel="noopener">☕ Enjoying the game? Buy the maker a coffee</a></p>
 <p><a class="back solid" href="./">‹ Back to the game</a></p>
 </main>
 </body>

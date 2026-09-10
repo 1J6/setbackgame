@@ -3,7 +3,7 @@ import { Bid, Seat, SEAT_NAMES, TEAM_NAMES, TEAM_LONG_NAMES, teamOfSeat, seatInc
 import { chooseAction, chooseBid, choosePlay } from './ai.js';
 import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
-import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb } from './view.js';
+import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml } from './view.js';
 
 const USER = Seat.South;
 const STORAGE_KEY = 'lis-setback-v2';
@@ -84,7 +84,7 @@ async function showMenu() {
     `<p class="credit">You play South; North is your partner. Rules and scoring follow ` +
     `<a href="https://www.bernsrite.com/Setback/" target="_blank" rel="noopener">Brian Berns' Setback</a>, whose F# game engine ` +
     `(<a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">source</a>) this page ports to JavaScript. ` +
-    `The computer players use a Monte Carlo search that runs entirely on your phone. Progress is saved on this device.</p>`;
+    `The computer players use a Monte Carlo search that runs entirely on your phone. Progress is saved on this device.</p>` + tipHtml();
   while (true) {
     const action = await showSheet(html());
     if (action === 'hints') { settings.hints = !settings.hints; saveSettings(); if (ui.awaiting && hintsOn()) requestHint(); if (!hintsOn()) { ui.hint = null; render(); } continue; }

@@ -9,7 +9,7 @@ import { chooseAction } from './ai.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
 import {
   $, sleep, renderTable, resetTableCache, showScreen, setScreenHtml, setSheet, toast, escapeHtml,
-  dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb,
+  dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml,
 } from './view.js';
 
 const TURN_MS = 60000;      // a player has one minute before the computer plays for them
@@ -445,7 +445,7 @@ function renderLobby(room) {
           : `<p class="sub center">${ready ? `Waiting for ${escapeHtml((ps.find((p) => p.id === room.hostId) || {}).name || 'the host')} to start…` : 'Waiting for everyone to join and pick teams…'}</p>`) +
     `<button type="button" class="btn secondary" data-action="chat">Chat${C.msgs.length > C.seen ? ` (${C.msgs.length - C.seen} new)` : ''}</button>` +
     `<button type="button" class="btn danger" data-action="leave">Leave room</button>` +
-    `</div>` + rulesBlurb()));
+    `</div>` + rulesBlurb() + tipHtml()));
   bindScreen({
     share: async () => {
       const url = shareUrl(room.code);
@@ -637,7 +637,7 @@ function bindTable() {
       `<button type="button" class="btn danger" data-action="leave">Leave room</button>` +
       `<button type="button" class="btn secondary" data-action="close">Close</button>` +
       `</div>` + rulesBlurb() +
-      `<p class="credit">If a player does not move within a minute (or eight seconds when their phone is disconnected), the computer plays that turn for them.</p>`, sheetAction);
+      `<p class="credit">If a player does not move within a minute (or eight seconds when their phone is disconnected), the computer plays that turn for them.</p>` + tipHtml(), sheetAction);
   };
 }
 
