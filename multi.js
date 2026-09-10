@@ -21,6 +21,11 @@ const ROOM_KEY = 'lis-setback-room';
 const PID_KEY = 'lis-setback-pid';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/;
+const QUICK_WAIT_MS = 20000;   // a quick-play room starts after this, computers filling empty seats
+const BOT_MS = 1200;           // a computer seat plays this quickly
+const BOT_NAMES = ['Bot Ada', 'Bot Max', 'Bot Ivy'];
+const OPEN_MAX_AGE = 15 * 60 * 1000; // ignore quick-play index entries older than this
+const NAME_KEY = 'lis-setback-name';
 
 const rng = Math.random;
 // Identity persists per device so a reload rejoins the same seat. In local
@@ -42,6 +47,7 @@ let S = null; // { store, pid, code, ref, room, unsub, stopPresence }
 const ui = {
   dealNo: -1, completed: 0, showTrick: null, trickWinner: null, trickTimer: null,
   busy: false, noticeId: null, takeoverTimer: null, tick: null, pendingName: null, intent: null, leaving: false,
+  starting: false, openKey: null,
 };
 
 // ---------------------------------------------------------------- chat
@@ -139,7 +145,9 @@ const players = (room) => Object.entries((room && room.players) || {}).map(([id,
 const me = (room) => (room && room.players && room.players[S.pid]) || null;
 const isHost = (room) => room && room.hostId === S.pid;
 const pidAtSeat = (room, seat) => players(room).find((p) => p.seat === seat) || null;
-const absent = (p) => !p || p.left || p.connected === false;
+const absent = (p) => !p || (!p.bot && (p.left || p.connected === false));
+const isBot = (p) => !!(p && p.bot);
+const humans = (room) => players(room).filter((p) => !p.bot);
 const now = () => S.store.now();
 
 function teamNamesOf(room) {
@@ -208,7 +216,7 @@ const turnStart = (room, st) => Math.max(st.lastT || 0, room.resumedAt || 0);
 
 // ----------------------------------------------------------- lobby ops
 
-async function createRoom(name) {
+async function createRoom(name, isPublic = false) {
   for (let attempt = 0; attempt < 8; attempt++) {
     const code = makeCode();
     const ref = S.store.open(code);
@@ -217,6 +225,7 @@ async function createRoom(name) {
     const t = S.store.now();
     const room = {
       code, hostId: S.pid, status: 'lobby', fmt: ROOM_FMT, createdAt: t, updatedAt: t, paused: false,
+      public: isPublic, startAt: isPublic ? t + QUICK_WAIT_MS : null,
       players: { [S.pid]: { name, team: null, connected: true, joinedAt: t } },
     };
     const res = await ref.transaction((cur) => (cur === null ? room : undefined));
@@ -240,13 +249,49 @@ async function joinRoom(code, name) {
       room.players[S.pid].connected = true;
       return room;
     }
-    if (room.status !== 'lobby') { reason = 'That game has already started.'; return undefined; }
+    if (room.status !== 'lobby') {
+      const spare = room.public ? Object.entries(room.players || {}).find(([, p]) => p.bot || p.left) : null;
+      if (!spare) { reason = 'That game has already started.'; return undefined; }
+      const [sid, sp] = spare;
+      delete room.players[sid];
+      room.players[S.pid] = { name, team: sp.team, seat: sp.seat, connected: true, joinedAt: t };
+      return room;
+    }
     if (Object.keys(room.players || {}).length >= 4) { reason = 'That room is full.'; return undefined; }
     room.players = room.players || {};
     room.players[S.pid] = { name, team: null, connected: true, joinedAt: t };
     return room;
   });
   if (!res.committed || !res.value) throw new Error(reason || 'Could not join that room.');
+}
+
+/// Quick Play: join the fullest fresh public room with a seat, else open one.
+async function quickPlay(name) {
+  const list = await S.store.openRooms();
+  const t = now();
+  const codes = Object.entries(list || {})
+    .filter(([code, e]) => CODE_RE.test(code) && e && (e.n || 0) < 4 && t - (e.t || 0) < OPEN_MAX_AGE)
+    .sort((a, b) => (b[1].n || 0) - (a[1].n || 0) || (a[1].t || 0) - (b[1].t || 0))
+    .map(([code]) => code);
+  for (const code of codes) {
+    try { await joinRoom(code, name); return code; } catch { /* full or gone: try the next */ }
+  }
+  return createRoom(name, true);
+}
+
+/// The host keeps the public-room index entry current: present while the
+/// room can take a player (lobby seat free, or a computer/departed seat).
+function updateOpenIndex(room) {
+  if (!room.public || !isHost(room) || !S.store.setOpen) return;
+  const n = humans(room).filter((p) => !p.left).length;
+  const joinable = room.status === 'lobby'
+    ? Object.keys(room.players || {}).length < 4
+    : players(room).some((p) => p.bot || p.left);
+  const entry = joinable ? { t: room.createdAt, n } : null;
+  const key = JSON.stringify(entry);
+  if (ui.openKey === key) return;
+  ui.openKey = key;
+  S.store.setOpen(room.code, entry);
 }
 
 async function attach(code) {
@@ -268,12 +313,14 @@ function detach() {
   clearTimeout(ui.takeoverTimer); clearInterval(ui.tick); clearTimeout(ui.trickTimer);
   ui.takeoverTimer = null; ui.tick = null; ui.trickTimer = null; ui.showTrick = null; ui.dealNo = -1;
   stCache.code = null; stCache.len = -1; stCache.st = null;
+  ui.openKey = null; ui.starting = false;
 }
 
 async function leaveRoom() {
   if (S.ref) {
     ui.leaving = true; // the local apply of the transaction fires onRoom(null) before it commits
-    await tx((room) => {
+    const code = S.code, wasPublic = !!(S.room && S.room.public);
+    const res = await tx((room) => {
       if (!room.players || !room.players[S.pid]) return undefined;
       if (room.status === 'lobby') {
         delete room.players[S.pid];
@@ -283,12 +330,13 @@ async function leaveRoom() {
       } else {
         room.players[S.pid].left = true;
         room.players[S.pid].connected = false;
-        const rest = players(room).filter((p) => !p.left);
+        const rest = players(room).filter((p) => !p.left && !p.bot);
         if (rest.length === 0) return null;
         if (room.hostId === S.pid) room.hostId = rest.sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
       }
       return room;
     });
+    if (wasPublic && res && res.value === null && S.store.setOpen) S.store.setOpen(code, null);
   }
   ui.leaving = false;
   detach();
@@ -318,15 +366,20 @@ function bindScreen(handlers) {
   };
 }
 
+const onlineText = (n) => (n === null || n === undefined ? '' : `${n} player${n === 1 ? '' : 's'} online now`);
+
 function showChoose() {
   setScreenHtml(screenShell('Multiplayer',
     `<p class="sub">Four players, each on their own phone. One person creates a game and shares the five-letter code; the other three join with it.</p>` +
     `<div class="actions">` +
-    `<button type="button" class="btn big" data-action="create">Create a game</button>` +
-    `<button type="button" class="btn big secondary" data-action="join">Join a game</button>` +
-    `</div>`, 'home'));
+    `<button type="button" class="btn big" data-action="quick">Quick play<small>Random players; starts within 20 seconds, computers fill empty seats</small></button>` +
+    `<button type="button" class="btn big secondary" data-action="create">Create a game<small>Get a code to share with friends</small></button>` +
+    `<button type="button" class="btn big secondary" data-action="join">Join a game<small>Enter a friend's code</small></button>` +
+    `</div>` +
+    `<p class="sub center" id="onlineCount">${onlineText(S.onlineCount)}</p>`, 'home'));
   bindScreen({
     home: () => { location.hash = ''; location.reload(); },
+    quick: () => { ui.intent = { kind: 'quick' }; showName(); },
     create: () => { ui.intent = { kind: 'create' }; showName(); },
     join: () => showCode(),
   });
@@ -356,13 +409,16 @@ function showCode(prefill = '', error = '') {
 
 function showName(error = '') {
   const intent = ui.intent;
-  const sub = intent.kind === 'join' ? `Joining room <b>${intent.code}</b>.` : 'You will get a room code to share.';
+  const sub = intent.kind === 'join' ? `Joining room <b>${intent.code}</b>.`
+    : intent.kind === 'quick' ? 'You will be matched with other players. Chat in quick-play games is limited to the quick phrases.'
+    : 'You will get a room code to share.';
+  const remembered = load(NAME_KEY) || '';
   setScreenHtml(screenShell('Your name',
     `<p class="sub">${sub}</p>` +
     `<form>` +
-    `<input id="nameInput" class="input" type="text" autocomplete="off" autocapitalize="words" maxlength="14" placeholder="Name" required>` +
+    `<input id="nameInput" class="input" type="text" autocomplete="off" autocapitalize="words" maxlength="14" placeholder="Name" value="${escapeHtml(remembered)}" required>` +
     (error ? `<p class="error">${escapeHtml(error)}</p>` : '') +
-    `<div class="actions"><button type="submit" class="btn big" id="nameGo">${intent.kind === 'join' ? 'Join' : 'Create room'}</button></div>` +
+    `<div class="actions"><button type="submit" class="btn big" id="nameGo">${intent.kind === 'join' ? 'Join' : intent.kind === 'quick' ? 'Find a game' : 'Create room'}</button></div>` +
     `</form>`, 'back'));
   bindScreen({
     back: () => (intent.kind === 'join' ? showCode(intent.code) : showChoose()),
@@ -370,8 +426,10 @@ function showName(error = '') {
       const name = form.nameInput.value.trim().slice(0, 14);
       if (!name) return;
       $('nameGo').disabled = true;
+      store(NAME_KEY, name);
       try {
         if (intent.kind === 'join') { await joinRoom(intent.code, name); await attach(intent.code); }
+        else if (intent.kind === 'quick') { const code = await quickPlay(name); await attach(code); }
         else { const code = await createRoom(name); await attach(code); }
       } catch (err) {
         showName(err.message || String(err));
@@ -385,10 +443,33 @@ function shareUrl(code) {
   return `${location.origin}${location.pathname}#join=${code}`;
 }
 
+const quickWaitText = (room) => {
+  const n = Object.keys(room.players || {}).length;
+  if (n >= 4) return 'Starting…';
+  const wait = Math.max(0, Math.ceil((room.startAt - now()) / 1000));
+  return wait > 0 ? `Starting in ${wait}s…` : 'Starting…';
+};
+
 function renderLobby(room) {
   const ps = players(room).sort((a, b) => a.joinedAt - b.joinedAt);
   const my = me(room);
   const host = isHost(room);
+  if (room.public) {
+    const list = ps.map((p) =>
+      `<li><span class="dot ${p.connected === false ? 'off' : 'on'}"></span> ${escapeHtml(p.name)}` +
+      `${p.id === S.pid ? ' <span class="tag">you</span>' : ''}</li>`).join('');
+    setScreenHtml(screenShell('Quick play',
+      `<p class="sub">Random players. The game starts when four have joined or when the clock runs out; computers fill any empty seats and hand them over to people who join later.</p>` +
+      `<h3>Players <span class="sub">(${ps.length}/4)</span></h3><ul class="players">${list}</ul>` +
+      `<div class="actions">` +
+      `<button type="button" class="btn big" id="quickWait" disabled>${quickWaitText(room)}</button>` +
+      `<button type="button" class="btn secondary" data-action="chat">Chat${C.msgs.length > C.seen ? ` (${C.msgs.length - C.seen} new)` : ''}</button>` +
+      `<button type="button" class="btn danger" data-action="leave">Leave</button>` +
+      `</div>` +
+      `<p class="credit">Room code <b>${room.code}</b>: friends can still join with it.</p>` + rulesBlurb() + tipHtml()));
+    bindScreen({ chat: () => chatOpen(true), leave: () => leaveRoom() });
+    return;
+  }
   const teamCount = (t) => ps.filter((p) => p.team === t).length;
   const ready = ps.length === 4 && teamCount(0) === 2 && teamCount(1) === 2;
   const list = ps.map((p) =>
@@ -451,8 +532,43 @@ function setTeam(t) {
 }
 
 function startGame() {
-  return tx((r) => {
-    if (r.hostId !== S.pid || r.status !== 'lobby') return undefined;
+  return tx((r) => (r.hostId !== S.pid || r.status !== 'lobby' ? undefined : startTx(r)));
+}
+
+/// A quick-play lobby starts when full, or when its clock runs out: the host's
+/// phone tries first, the others a few seconds later as a backup.
+function maybeQuickStart() {
+  const room = S && S.room;
+  if (!room || !room.public || room.status !== 'lobby' || ui.starting) return;
+  const full = Object.keys(room.players || {}).length >= 4;
+  if (!full && now() < room.startAt + (isHost(room) ? 0 : 3000)) return;
+  ui.starting = true;
+  tx(quickStartTx).finally(() => { ui.starting = false; });
+}
+
+function quickStartTx(r) {
+  if (!r.public || r.status !== 'lobby') return undefined;
+  const ids = Object.keys(r.players || {});
+  if (ids.length === 0 || (ids.length < 4 && now() < r.startAt)) return undefined;
+  for (let b = 0; Object.keys(r.players).length < 4; b++) {
+    r.players['bot' + b] = { name: BOT_NAMES[b], bot: true, team: null, connected: true, joinedAt: now() + b };
+  }
+  const all = Object.keys(r.players);
+  for (let i = all.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [all[i], all[j]] = [all[j], all[i]]; }
+  all.forEach((id, i) => { r.players[id].team = i % 2; });
+  return startTx(r);
+}
+
+function tickLobby() {
+  const room = S && S.room;
+  if (!room || room.status !== 'lobby' || !room.public) return;
+  const el = $('quickWait');
+  if (el) el.textContent = quickWaitText(room);
+  maybeQuickStart();
+}
+
+function startTx(r) {
+  {
     const ps = Object.entries(r.players || {}).map(([id, p]) => ({ id, ...p }));
     if (ps.length !== 4) return undefined;
     const t0 = ps.filter((p) => p.team === 0).sort((a, b) => a.joinedAt - b.joinedAt);
@@ -465,7 +581,7 @@ function startGame() {
     r.fmt = ROOM_FMT;
     r.moves = { 0: { d: newSeed(), l: Math.floor(Math.random() * 4), t: now() } };
     return r;
-  });
+  }
 }
 
 // --------------------------------------------------------------- table
@@ -489,12 +605,17 @@ function onRoom(room) {
   }
   const prev = S.room;
   S.room = room;
+  $('chatForm').hidden = !!room.public; // quick-play rooms: quick phrases only
   if (room.status === 'lobby') {
-    clearInterval(ui.tick); ui.tick = null;
+    if (room.public) { if (!ui.tick) ui.tick = setInterval(tickLobby, 1000); }
+    else { clearInterval(ui.tick); ui.tick = null; }
     renderLobby(room);
+    updateOpenIndex(room);
+    if (room.public) maybeQuickStart();
     return;
   }
-  if (!prev || prev.status === 'lobby') { showScreen('table'); resetTableCache(); bindTable(); }
+  if (!prev || prev.status === 'lobby') { clearInterval(ui.tick); ui.tick = null; showScreen('table'); resetTableCache(); bindTable(); }
+  updateOpenIndex(room);
   const st = stateOf(room);
   if (st.corrupt || !st.game) return;
 
@@ -520,7 +641,9 @@ function onRoom(room) {
 }
 
 function turnLimit(room, seat) {
-  return absent(pidAtSeat(room, seat)) ? ABSENT_MS : TURN_MS;
+  const p = pidAtSeat(room, seat);
+  if (isBot(p)) return BOT_MS;
+  return absent(p) ? ABSENT_MS : TURN_MS;
 }
 
 function renderAll() {
@@ -611,7 +734,8 @@ function bindTable() {
       `<button type="button" class="btn danger" data-action="leave">Leave room</button>` +
       `<button type="button" class="btn secondary" data-action="close">Close</button>` +
       `</div>` + rulesBlurb() +
-      `<p class="credit">If a player does not move within a minute (or eight seconds when their phone is disconnected), the computer plays that turn for them.</p>` + tipHtml(), sheetAction);
+      `<p class="credit">If a player does not move within a minute (or eight seconds when their phone is disconnected), the computer plays that turn for them.` +
+      (room.public ? ' This is a quick-play room: chat is limited to the quick phrases, and anyone who joins takes over a computer seat.' : '') + `</p>` + tipHtml(), sheetAction);
   };
 }
 
@@ -640,15 +764,16 @@ function scheduleTakeover() {
   if (!st.game) return;
   const my = me(room);
   const seq = st.seq;
-  const jitter = (my.seat || 0) * 900 + 200;
   let seat = null, due = null;
   if (st.phase === 'auction' || st.phase === 'playout') {
     seat = OpenDeal.currentPlayer(st.game.Deal);
     if (seat === my.seat) return; // my own turn: no takeover from me
+    const bot = isBot(pidAtSeat(room, seat));
+    const jitter = bot ? (my.seat || 0) * 250 + 100 : (my.seat || 0) * 900 + 200;
     due = turnStart(room, st) + turnLimit(room, seat) + jitter;
   } else if (st.phase === 'dealOver') {
     if (isHost(room)) return;
-    due = turnStart(room, st) + (absent(room.players[room.hostId]) ? ABSENT_MS : TURN_MS) + jitter;
+    due = turnStart(room, st) + (absent(room.players[room.hostId]) ? ABSENT_MS : TURN_MS) + (my.seat || 0) * 900 + 200;
   } else return;
 
   ui.takeoverTimer = setTimeout(async () => {
@@ -667,7 +792,14 @@ function scheduleTakeover() {
 // --------------------------------------------------------------- entry
 
 export async function startMulti(storeImpl, joinCode) {
-  S = { store: storeImpl, pid: getPid(), code: null, ref: null, room: null, unsub: null, stopPresence: null };
+  S = { store: storeImpl, pid: getPid(), code: null, ref: null, room: null, unsub: null, stopPresence: null, onlineCount: null };
+  if (storeImpl.online) {
+    storeImpl.online(S.pid, (n) => {
+      S.onlineCount = n;
+      const el = $('onlineCount');
+      if (el) el.textContent = onlineText(n);
+    });
+  }
   const saved = load(ROOM_KEY);
   if (joinCode && CODE_RE.test(joinCode)) {
     if (saved && saved.code === joinCode && saved.pid === S.pid) { await attach(joinCode); return; }

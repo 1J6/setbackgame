@@ -2,6 +2,20 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "open": {
+      ".read": true,
+      "$code": {
+        ".write": "$code.matches(/^[A-HJ-NP-Z2-9]{5}$/)",
+        ".validate": "!newData.exists() || newData.hasChildren(['t'])"
+      }
+    },
+    "online": {
+      ".read": true,
+      "$pid": {
+        ".write": "$pid.matches(/^[a-z0-9]{6,40}$/)",
+        ".validate": "!newData.exists() || newData.isBoolean()"
+      }
+    },
     "rooms": {
       "$code": {
         ".read": "$code.matches(/^[A-HJ-NP-Z2-9]{5}$/)",

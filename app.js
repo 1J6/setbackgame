@@ -16,7 +16,7 @@ function homeHtml(multiNote) {
     `<p class="sub">Bid, name trump, and take High, Low, Jack and Game.</p>` +
     `<div class="actions">` +
     `<button type="button" class="btn big" data-action="single">Single player<small>Three computer players, with an optional coach</small></button>` +
-    `<button type="button" class="btn big secondary" data-action="multi">Multiplayer<small>Four friends, one room code</small></button>` +
+    `<button type="button" class="btn big secondary" data-action="multi">Multiplayer<small>Quick play with anyone, or friends with a code</small></button>` +
     `</div>` +
     (multiNote ? `<p class="error">${multiNote}</p>` : '') +
     `<p class="credit"><a href="rules.html">Rules of Setback</a> &nbsp;·&nbsp; ` +

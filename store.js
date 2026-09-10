@@ -35,6 +35,23 @@ async function firebaseStore(cfg) {
   return {
     kind: 'firebase',
     now: () => Date.now() + offset,
+    // Quick Play: index of public rooms with a free seat, kept by each room's host
+    async openRooms() { const s = await db.ref('open').get(); return s.val() || {}; },
+    setOpen(code, entry) {
+      const r = db.ref('open/' + code);
+      if (entry) { r.set(entry); r.onDisconnect().remove(); } else { r.onDisconnect().cancel(); r.remove(); }
+    },
+    // presence for the "players online" counter; cb(count)
+    online(pid, cb) {
+      const mine = db.ref('online/' + pid);
+      mine.onDisconnect().remove();
+      mine.set(true);
+      const again = () => { if (document.visibilityState === 'visible') mine.set(true); };
+      document.addEventListener('visibilitychange', again);
+      const all = db.ref('online');
+      const h = all.on('value', (s) => cb(s.numChildren()));
+      return () => { document.removeEventListener('visibilitychange', again); all.off('value', h); mine.onDisconnect().cancel(); mine.remove(); };
+    },
     open(code) {
       const ref = db.ref('rooms/' + code);
       return {
@@ -88,9 +105,18 @@ function localStore() {
   const chan = new BroadcastChannel('lis-setback-local');
   const key = (code) => 'lis-setback-local-' + code;
   const read = (code) => { try { const s = localStorage.getItem(key(code)); return s ? JSON.parse(s) : null; } catch { return null; } };
+  const OPEN_KEY = 'lis-setback-local-open';
+  const readOpen = () => { try { return JSON.parse(localStorage.getItem(OPEN_KEY) || '{}'); } catch { return {}; } };
   return {
     kind: 'local',
     now: () => Date.now(),
+    async openRooms() { return readOpen(); },
+    setOpen(code, entry) {
+      const m = readOpen();
+      if (entry) m[code] = entry; else delete m[code];
+      localStorage.setItem(OPEN_KEY, JSON.stringify(m));
+    },
+    online(pid, cb) { setTimeout(() => cb(null), 0); return () => {}; },
     open(code) {
       return {
         subscribe(cb) {

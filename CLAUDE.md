@@ -39,7 +39,18 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
   for that seat.
 - Seats: Team 1 (E+W) = seats 0 and 2, Team 2 (N+S) = seats 1 and 3. Screen position = `(seat - mySeat + 3) % 4`.
 - Player identity `lis-setback-pid` in localStorage (sessionStorage under `?local=1` so tabs differ).
-- Chat is at `rooms/{CODE}/chat` (push list), separate from the moves.
+- Chat is at `rooms/{CODE}/chat` (push list), separate from the moves. Quick-play rooms hide the free-text
+  input, so strangers only exchange the quick phrases.
+- Quick Play: `open/{CODE}` = `{t: createdAt, n: humans}` is an index of public rooms with a seat to give,
+  kept by the room's host (`updateOpenIndex`, with an onDisconnect removal). Quick Play reads it, tries the
+  fullest fresh room, else creates a public room (`public: true`, `startAt`). A public lobby starts when four
+  humans are in or when `startAt` passes (host first, others as backup); empty seats get computer players
+  (`bot: true`, names Bot Ada/Max/Ivy) that any client plays for after 1.2 s. Joining a public game in
+  progress replaces a computer or a departed (`left`) player and takes that seat. When the last human leaves,
+  the room and its index entry are deleted.
+- `online/{pid}` presence powers the "players online" counter on the multiplayer screen. Every client
+  downloads the whole `online` node, which is fine for hundreds and should become a counter before tens of
+  thousands.
 - Traffic: about 18 bytes per move on the wire, roughly 10 KB per phone per game (the old JSON blob
   design re-sent about 1 KB on every move).
 
