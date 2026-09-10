@@ -16,6 +16,10 @@ import {
 } from './engine.js';
 import { judgeScore } from './rules.js';
 
+/// Minimum simulated chance of taking all four points before the computer
+/// will bid four (see chooseBid).
+const MIN_FOUR_CHANCE = 0.3;
+
 // ------------------------------------------------------------------ helpers
 
 function shuffleInPlace(items, rng) {
@@ -312,6 +316,14 @@ export function chooseBid(infoSet, rng, numWorlds = 64) {
       total += utility(adj, gameScore, team, team);
     }
     values[bid] = total / bestScores.length;
+  }
+
+  // A bid of four ends the auction and cannot be outbid, so a computer that
+  // bid four purely to block (expecting to be set) made the game a slog for
+  // the humans stuck above 11. Only bid four with a real chance of making it.
+  if (values[Bid.Four] !== undefined) {
+    const pMake4 = bestScores.filter((ds) => ds[team] >= 4).length / bestScores.length;
+    if (pMake4 < MIN_FOUR_CHANCE) values[Bid.Four] = -Infinity;
   }
 
   // Value of passing

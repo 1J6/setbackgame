@@ -122,7 +122,9 @@ export function renderTable(vm) {
       chip('Jack', h.Jack, h.Jack === null ? undefined : Rank.Jack) +
       `<span class="chip">Game <b>${g[0]}</b> · <b>${g[1]}</b></span>`;
   } else {
-    status.innerHTML = '<span class="chip">High · Low · Jack · Game</span>';
+    const pn = vm.score ? pendingNote(vm.score, vm.teamShort) : '';
+    status.innerHTML = '<span class="chip">High · Low · Jack · Game</span>' +
+      (pn ? `<span class="chip warn">${escapeHtml(pn)}</span>` : '');
   }
 
   // seats (rebuilt only when their content changes)

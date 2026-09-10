@@ -235,6 +235,7 @@ h1, h2, h3 {
 .chip .pt-card.suit-red { color: var(--red-soft); }
 .chip.ew b { color: var(--ew); }
 .chip.ns b { color: var(--ns); }
+.chip.warn { white-space: normal; text-align: center; max-width: 92vw; color: var(--brass); border-color: rgba(217, 180, 90, 0.45); }
 
 /* ------------------------------------------------------------- table */
 

@@ -654,12 +654,14 @@ function onRoom(room) {
   const my = me(room);
   if (st.phase === 'gameOver' && my.seat !== undefined && ui.savedGame !== `${room.code}:${st.gameNo}`) {
     ui.savedGame = `${room.code}:${st.gameNo}`;
-    const names = [0, 1, 2, 3].map((s) => { const p = pidAtSeat(room, s); return p ? p.name : '—'; });
-    saveGameRecord({
-      id: `m${room.code}-${st.gameNo}-${st.lastT}`, t: st.lastT || now(), mode: room.public ? 'quick' : 'multi', mySeat: my.seat,
-      names, teamNames: teamNamesOf(room), moves: movesArray(room.moves).slice(st.gameStart || 0, st.seq),
-      winner: st.winner, score: st.game.Score.slice(), reason: st.reason,
-    });
+    try {
+      const names = [0, 1, 2, 3].map((s) => { const p = pidAtSeat(room, s); return p ? p.name : '—'; });
+      saveGameRecord({
+        id: `m${room.code}-${st.gameNo}-${st.lastT}`, t: st.lastT || now(), mode: room.public ? 'quick' : 'multi', mySeat: my.seat,
+        names, teamNames: teamNamesOf(room), moves: movesArray(room.moves).slice(st.gameStart || 0, st.seq),
+        winner: st.winner, score: st.game.Score.slice(), reason: st.reason,
+      });
+    } catch (err) { console.warn('history', err); }
   }
 
   // notices

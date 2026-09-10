@@ -321,7 +321,7 @@ async function runGame() {
         pers.reason = judged.reason;
         pers.gamesWon[winner] += 1;
         save();
-        recordGame(winner);
+        try { recordGame(winner); } catch (err) { console.warn('history', err); }
       }
       render();
       await showSheet(gameOverHtml(winner, pers.reason, TEAM_LONG_NAMES, pers.game.Score, pers.stats.game, pers.stats.total, pers.gamesWon, teamOfSeat(USER)) +
