@@ -16,9 +16,12 @@ import {
 } from './engine.js';
 import { judgeScore } from './rules.js';
 
-/// Minimum simulated chance of taking all four points before the computer
-/// will bid four (see chooseBid).
-const MIN_FOUR_CHANCE = 0.3;
+/// Minimum simulated chance of making each bid before the computer will make
+/// it (see chooseBid). Chosen for how the bidding feels to people rather than
+/// for self-play strength, which is indifferent: with these, 3-bids fall from
+/// 71% to 35% of deals and their set rate from 42% to 18%; a hand like
+/// 7-5-2 of trump passes, and A-10 of trump bids 2 rather than 3.
+const MIN_MAKE = { 2: 0.7, 3: 0.7, 4: 0.5 };
 
 // ------------------------------------------------------------------ helpers
 
@@ -280,7 +283,7 @@ function simulateContract(dealer, hands, bidder, bid, firstCard) {
 }
 
 /// Chooses a bid. Returns { bid, values } where values maps bid -> mean utility.
-export function chooseBid(infoSet, rng, numWorlds = 64) {
+export function chooseBid(infoSet, rng, numWorlds = 64, opts = {}) {
   const { Player: seat, Hand: hand, Deal: deal, GameScore: gameScore } = infoSet;
   const auction = deal.Auction;
   const legal = Auction.legalBids(auction);
@@ -318,12 +321,16 @@ export function chooseBid(infoSet, rng, numWorlds = 64) {
     values[bid] = total / bestScores.length;
   }
 
-  // A bid of four ends the auction and cannot be outbid, so a computer that
-  // bid four purely to block (expecting to be set) made the game a slog for
-  // the humans stuck above 11. Only bid four with a real chance of making it.
-  if (values[Bid.Four] !== undefined) {
-    const pMake4 = bestScores.filter((ds) => ds[team] >= 4).length / bestScores.length;
-    if (pMake4 < MIN_FOUR_CHANCE) values[Bid.Four] = -Infinity;
+  // Soundness gate: a bid needs a real chance of being made, whatever the
+  // game situation says about blocking. (Self-play is indifferent to this;
+  // humans are not: bidding 2 on three small trumps reads as reckless, and a
+  // four purely to block made games a slog.)
+  const pMake = {};
+  for (const bid of legal) {
+    if (bid === Bid.Pass) continue;
+    pMake[bid] = bestScores.filter((ds) => ds[team] >= bid).length / bestScores.length;
+    const min = (opts.minMake || MIN_MAKE)[bid];
+    if (min !== undefined && pMake[bid] < min) values[bid] = -Infinity;
   }
 
   // Value of passing
@@ -349,7 +356,7 @@ export function chooseBid(infoSet, rng, numWorlds = 64) {
     if (bid === Bid.Pass) continue;
     if (values[bid] > bestV + 0.05) { bestV = values[bid]; best = bid; }
   }
-  return { bid: best, values, trumpSuit: bestSuit };
+  return { bid: best, values, trumpSuit: bestSuit, pMake };
 }
 
 // ---------------------------------------------------------------- playing
@@ -407,12 +414,12 @@ export function choosePlay(infoSet, rng, numWorlds = 64) {
 }
 
 /// Chooses any action for the given information set.
-export function chooseAction(infoSet, rng, numWorlds) {
+export function chooseAction(infoSet, rng, numWorlds, opts = {}) {
   if (infoSet.Deal.Playout) {
     const r = choosePlay(infoSet, rng, numWorlds);
     return { action: { card: r.card }, values: r.values };
   }
-  const r = chooseBid(infoSet, rng, numWorlds);
+  const r = chooseBid(infoSet, rng, numWorlds, opts);
   return { action: { bid: r.bid }, values: r.values };
 }
 
