@@ -11,7 +11,8 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
 | `app.js` | Entry: start screen and hash routing (`#single`, `#multi`, `#join=CODE`). |
 | `view.js` | Shared table renderer. Draws relative to `mySeat` (always bottom). Seats/slots/hand are rebuilt only when their HTML changes, so entrance animations run once. Also sheets, toast, deal and game summaries. |
 | `single.js` | Single player vs three computer players. State in `localStorage` (`lis-setback-v2`). |
-| `multi.js` | Multiplayer: lobby, teams, transactions on the room, turn timer + computer takeover, host pause/rematch, chat. |
+| `multi.js` | Multiplayer: lobby, teams, move appends and room transactions, turn timer + computer takeover, host pause/rematch, chat. |
+| `replay.js` | Move-log state: seeded shuffle, `apply`/`validate` one move, `replay` a list. Pure and tested in `tests/test_replay.mjs`. |
 | `store.js` | Room storage adapters: Firebase Realtime Database, and a same-browser adapter for `?local=1` testing. |
 | `engine.js` | Rules engine, a function-for-function port of brianberns/Setback (F#). Do not "improve" rules here; compare against the F# source. One deliberate house deviation: a bid of four cannot be outbid and ends the auction (the F# dealer "steal" is removed). |
 | `ai.js` | Monte Carlo computer player (samples unseen cards consistent with plays and voids, rolls out with a heuristic policy). Self-play A/B findings (Sep 2026, 300-game runs): more sampled worlds is the one reliable strength gain (300 vs 100 worlds won 57%); bid-aware sampling, conservative-bidding knobs, and rollout-policy refinements (Low awareness, trump-in costs, third-hand-high, draw-trump restraint) were all neutral or worse, so keep the policy simple. Bidding is near a self-play equilibrium: most auctions end at 3, and 4-bids are mostly deliberate blocks under the bid-out-at-11 rule. |
@@ -24,15 +25,23 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
 ## Multiplayer model
 
 - Room document at `rooms/{CODE}`: `players` (name, team, seat, connected, left, joinedAt), `hostId`,
-  `status` (lobby/playing), `paused`, `stats`, `turnStartedAt`, `version`, and `blob` (JSON string with
-  `game`, `phase` auction/playout/dealOver/gameOver, `lastDeal`, `dealNo`, `scoreBefore`).
-- Every mutation is a transaction that re-validates against the current room (`applyGameAction`,
-  `applyNextDeal`, `applyRematch`). The blob is a string so Firebase never drops empty arrays or nulls.
-- Turn limit 60 s (8 s if the player is disconnected/left). All other clients arm a timer; the first
-  transaction to commit plays the AI move for that seat. `version` prevents double application.
+  `status` (lobby/playing), `paused`, `resumedAt`, `fmt` (2), and `moves`: an append-only list of
+  small moves (`{d: seed, l?: dealer, t}` deal / rematch, `{b: bid, t, d?: seed}` bid with a redeal seed
+  when it ends an all-pass auction, `{c: card, t}` play). `replay.js` folds the list into game state
+  (phase auction/playout/dealOver/gameOver, score, deal summary, stats); the shuffle is seeded so every
+  phone deals the same hands. Rooms with `fmt` other than 2 are treated as stale and not joinable.
+- A move is appended with a transaction on its own slot (`moves/{seq}`), so the write is a few bytes
+  and a phone acting on a stale state finds the slot taken and retries from the newer state
+  (`appendMove` in multi.js). Room-level changes (join, leave, teams, start, pause, host) are
+  transactions on the room document (`tx`).
+- Turn limit 60 s (8 s if the player is disconnected/left), measured from the last move's `t` or the
+  last resume. All other clients arm a timer; the first slot transaction to commit plays the AI move
+  for that seat.
 - Seats: Team 1 (E+W) = seats 0 and 2, Team 2 (N+S) = seats 1 and 3. Screen position = `(seat - mySeat + 3) % 4`.
 - Player identity `lis-setback-pid` in localStorage (sessionStorage under `?local=1` so tabs differ).
-- Chat is at `rooms/{CODE}/chat` (push list), separate from the blob.
+- Chat is at `rooms/{CODE}/chat` (push list), separate from the moves.
+- Traffic: about 18 bytes per move on the wire, roughly 10 KB per phone per game (the old JSON blob
+  design re-sent about 1 KB on every move).
 
 ## Working on it
 

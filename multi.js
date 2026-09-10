@@ -1,12 +1,14 @@
 // Multiplayer Setback: four phones sharing one room in a realtime store.
 //
-// The room document is the single source of truth. Every change is made with
-// a transaction whose function re-validates the move against the latest room
-// state, so two phones can never both act on the same turn. The mutable game
-// state lives in `blob` (a JSON string) to avoid the store's array/null quirks.
-import { Bid, Team, seatIncr, teamOfSeat, Trick, Playout, OpenDeal, Game } from './engine.js';
+// The room document is the single source of truth. The game itself is an
+// append-only list of small moves (see replay.js); every phone replays it to
+// get the current state. A move is appended with a transaction on its own
+// slot, so a phone acting on a stale state finds the slot taken and retries
+// from the newer state. Room-level changes (players, host, pause) are
+// transactions on the room document.
+import { Bid, teamOfSeat, OpenDeal, Game } from './engine.js';
 import { chooseAction } from './ai.js';
-import { judgeDeal, emptyStats, addDealStats } from './rules.js';
+import { replay, validate, movesArray, newSeed } from './replay.js';
 import {
   $, sleep, renderTable, resetTableCache, showScreen, setScreenHtml, setSheet, toast, escapeHtml,
   dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml,
@@ -122,7 +124,17 @@ function renderChat() {
   if (atBottom) list.scrollTop = list.scrollHeight;
 }
 
-const parseBlob = (room) => (room && room.blob ? JSON.parse(room.blob) : null);
+const ROOM_FMT = 2; // rooms made by older versions of this page are not joinable
+
+/// Game state replayed from the room's move log, cached per move count.
+const stCache = { code: null, len: -1, st: null };
+function stateOf(room) {
+  const moves = movesArray(room && room.moves);
+  if (stCache.code !== room.code || stCache.len !== moves.length) {
+    stCache.code = room.code; stCache.len = moves.length; stCache.st = replay(moves);
+  }
+  return stCache.st;
+}
 const players = (room) => Object.entries((room && room.players) || {}).map(([id, p]) => ({ id, ...p }));
 const me = (room) => (room && room.players && room.players[S.pid]) || null;
 const isHost = (room) => room && room.hostId === S.pid;
@@ -148,95 +160,51 @@ async function tx(fn, onNull) {
     const out = fn(room);
     if (out === undefined) return undefined;
     if (out === null) return null;
-    out.version = (room.version || 0) + 1;
     out.updatedAt = now();
     return out;
   });
   return res;
 }
 
-// ------------------------------------------------------- game mutations
+// ----------------------------------------------------------- game moves
 
-function newGame(dealer) {
-  return {
-    game: Game.create(rng, dealer), phase: 'auction', dealNo: 0,
-    lastDeal: null, winner: null, reason: null, notice: null, scoreBefore: [0, 0],
-  };
-}
-
-function setBlob(room, blob) { room.blob = JSON.stringify(blob); }
-
-/// Applies a bid or play for `seat`. Used both for a player's own move and
-/// for the computer stepping in.
-function applyGameAction(room, seat, action) {
-  if (room.status !== 'playing' || room.paused) return undefined;
-  const blob = parseBlob(room);
-  if (!blob || (blob.phase !== 'auction' && blob.phase !== 'playout')) return undefined;
-  const game = blob.game;
-  if (OpenDeal.currentPlayer(game.Deal) !== seat) return undefined;
-  const info = Game.currentInfoSet(game);
-  if (!info.LegalActions.some((a) => a.bid === action.bid && a.card === action.card)) return undefined;
-
-  let g = Game.addAction(action, game);
-  if (OpenDeal.isComplete(g.Deal)) {
-    const cd = g.Deal.ClosedDeal;
-    if (cd.Auction.HighBid === Bid.Pass) {
-      g = Game.startNextDeal(rng, g);
-      blob.dealNo += 1;
-      blob.notice = { id: now(), text: 'Everyone passed — dealing again' };
-      blob.phase = 'auction';
-    } else {
-      const judged = judgeDeal(blob.scoreBefore, cd);
-      blob.lastDeal = judged;
-      const stats = room.stats || { game: emptyStats(), total: { ...emptyStats(), games: [0, 0] } };
-      addDealStats(stats.game, judged);
-      addDealStats(stats.total, judged);
-      if (judged.winner !== null) {
-        blob.phase = 'gameOver';
-        blob.winner = judged.winner;
-        blob.reason = judged.reason;
-        stats.total.games[judged.winner] += 1;
-      } else {
-        blob.phase = 'dealOver';
-      }
-      room.stats = stats;
-    }
-  } else {
-    blob.phase = g.Deal.ClosedDeal.Playout ? 'playout' : 'auction';
+/// Appends a move at the next slot. `make(st, room)` returns the move for the
+/// current state, or undefined to do nothing. Retries a few times when another
+/// phone took the slot first (the newer state arrives in between).
+async function appendMove(make) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const room = S && S.room;
+    if (!room || room.status !== 'playing') return false;
+    const st = stateOf(room);
+    if (st.corrupt) return false;
+    const move = make(st, room);
+    if (!move) return false;
+    move.t = now();
+    if (validate(st, move) !== null) return false;
+    const res = await S.ref.transactionAt(`moves/${st.seq}`, (cur) => (cur === null || cur === undefined ? move : undefined));
+    if (res.committed) return true;
+    await sleep(120 + attempt * 200);
   }
-  blob.game = g;
-  setBlob(room, blob);
-  room.turnStartedAt = now();
-  return room;
+  return false;
 }
 
-function applyNextDeal(room) {
-  if (room.status !== 'playing' || room.paused) return undefined;
-  const blob = parseBlob(room);
-  if (!blob || blob.phase !== 'dealOver') return undefined;
-  blob.game = Game.startNextDeal(rng, blob.game);
-  blob.scoreBefore = blob.game.Score.slice();
-  blob.dealNo += 1;
-  blob.phase = 'auction';
-  blob.lastDeal = null;
-  setBlob(room, blob);
-  room.turnStartedAt = now();
-  return room;
+/// The move that plays `action` for `seat`, if it is that seat's turn.
+function moveFor(st, room, seat, action) {
+  if (room.paused) return undefined;
+  if (st.phase !== 'auction' && st.phase !== 'playout') return undefined;
+  if (OpenDeal.currentPlayer(st.game.Deal) !== seat) return undefined;
+  if (action.card !== undefined) return { c: action.card };
+  const move = { b: action.bid };
+  const a = st.game.Deal.ClosedDeal.Auction;
+  if (action.bid === Bid.Pass && a.HighBid === Bid.Pass && a.Bids.length === 3) move.d = newSeed(); // all pass: redeal
+  return move;
 }
 
-function applyRematch(room) {
-  if (room.status !== 'playing') return undefined;
-  const blob = parseBlob(room);
-  if (!blob || blob.phase !== 'gameOver') return undefined;
-  const dealer = seatIncr(1, blob.game.Deal.ClosedDeal.Auction.Dealer);
-  const nb = newGame(dealer);
-  nb.dealNo = blob.dealNo + 1;
-  setBlob(room, nb);
-  room.stats.game = emptyStats();
-  room.paused = false;
-  room.turnStartedAt = now();
-  return room;
-}
+/// The host's "next deal" (after a deal) or "play again" (after a game).
+const dealMove = (st, room) => (room.paused || (st.phase !== 'dealOver' && st.phase !== 'gameOver') ? undefined : { d: newSeed() });
+
+/// When the current turn started: the last move, or the resume if later.
+const turnStart = (room, st) => Math.max(st.lastT || 0, room.resumedAt || 0);
 
 // ----------------------------------------------------------- lobby ops
 
@@ -248,7 +216,7 @@ async function createRoom(name) {
     if (existing) continue;
     const t = S.store.now();
     const room = {
-      code, hostId: S.pid, status: 'lobby', createdAt: t, updatedAt: t, version: 1, paused: false,
+      code, hostId: S.pid, status: 'lobby', fmt: ROOM_FMT, createdAt: t, updatedAt: t, paused: false,
       players: { [S.pid]: { name, team: null, connected: true, joinedAt: t } },
     };
     const res = await ref.transaction((cur) => (cur === null ? room : undefined));
@@ -261,6 +229,7 @@ async function joinRoom(code, name) {
   const ref = S.store.open(code);
   const existing = await ref.get();
   if (!existing) throw new Error('No room with that code.');
+  if (existing.fmt !== ROOM_FMT) throw new Error('That room was made with an older version of the game. Please create a new one.');
   const t = S.store.now();
   let reason = null;
   const res = await ref.transaction((room) => {
@@ -275,7 +244,6 @@ async function joinRoom(code, name) {
     if (Object.keys(room.players || {}).length >= 4) { reason = 'That room is full.'; return undefined; }
     room.players = room.players || {};
     room.players[S.pid] = { name, team: null, connected: true, joinedAt: t };
-    room.version = (room.version || 0) + 1;
     return room;
   });
   if (!res.committed || !res.value) throw new Error(reason || 'Could not join that room.');
@@ -299,6 +267,7 @@ function detach() {
   S.unsub = null; S.stopPresence = null; S.ref = null; S.code = null; S.room = null;
   clearTimeout(ui.takeoverTimer); clearInterval(ui.tick); clearTimeout(ui.trickTimer);
   ui.takeoverTimer = null; ui.tick = null; ui.trickTimer = null; ui.showTrick = null; ui.dealNo = -1;
+  stCache.code = null; stCache.len = -1; stCache.st = null;
 }
 
 async function leaveRoom() {
@@ -493,9 +462,8 @@ function startGame() {
     r.players[t1[0].id].seat = 1; r.players[t1[1].id].seat = 3;   // Team 2 = North + South
     r.status = 'playing';
     r.paused = false;
-    r.stats = { game: emptyStats(), total: { ...emptyStats(), games: [0, 0] } };
-    setBlob(r, newGame(Math.floor(Math.random() * 4)));
-    r.turnStartedAt = now();
+    r.fmt = ROOM_FMT;
+    r.moves = { 0: { d: newSeed(), l: Math.floor(Math.random() * 4), t: now() } };
     return r;
   });
 }
@@ -514,6 +482,11 @@ function onRoom(room) {
     detach(); store(ROOM_KEY, null); showChoose();
     return;
   }
+  if (room.fmt !== ROOM_FMT) {
+    toast('This room is from an older version of the game. Please make a new one.', 2500);
+    detach(); store(ROOM_KEY, null); showChoose();
+    return;
+  }
   const prev = S.room;
   S.room = room;
   if (room.status === 'lobby') {
@@ -522,17 +495,17 @@ function onRoom(room) {
     return;
   }
   if (!prev || prev.status === 'lobby') { showScreen('table'); resetTableCache(); bindTable(); }
-  const blob = parseBlob(room);
-  if (!blob) return;
+  const st = stateOf(room);
+  if (st.corrupt || !st.game) return;
 
   // notices
-  if (blob.notice && blob.notice.id !== ui.noticeId) { ui.noticeId = blob.notice.id; if (prev) toast(blob.notice.text, 1500); }
+  if (st.notice && st.notice.id !== ui.noticeId) { ui.noticeId = st.notice.id; if (prev) toast(st.notice.text, 1500); }
 
   // hold a just-finished trick on the table for a moment
-  const p = blob.game.Deal.ClosedDeal.Playout;
+  const p = st.game.Deal.ClosedDeal.Playout;
   const completed = p ? p.CompletedTricks.length : 0;
-  if (blob.dealNo !== ui.dealNo) {
-    ui.dealNo = blob.dealNo; ui.completed = completed; ui.showTrick = null; ui.trickWinner = null; clearTimeout(ui.trickTimer);
+  if (st.dealNo !== ui.dealNo) {
+    ui.dealNo = st.dealNo; ui.completed = completed; ui.showTrick = null; ui.trickWinner = null; clearTimeout(ui.trickTimer);
   } else if (completed > ui.completed && p) {
     ui.completed = completed;
     const last = p.CompletedTricks[completed - 1];
@@ -552,28 +525,29 @@ function turnLimit(room, seat) {
 
 function renderAll() {
   const room = S.room;
-  const blob = parseBlob(room);
+  const st = stateOf(room);
+  if (!st.game) return;
   const my = me(room);
   const mySeat = my.seat;
-  const game = blob.game;
+  const game = st.game;
   const deal = game.Deal;
   const names = [0, 1, 2, 3].map((s) => { const p = pidAtSeat(room, s); return p ? (p.id === S.pid ? `${p.name} (you)` : p.name) : '—'; });
   const connected = [0, 1, 2, 3].map((s) => !absent(pidAtSeat(room, s)));
   const teamNames = teamNamesOf(room);
   const teamShort = teamNames.map((n) => n.split(' & ').map(shortName).join(' & '));
-  const inHand = blob.phase === 'auction' || blob.phase === 'playout';
+  const inHand = st.phase === 'auction' || st.phase === 'playout';
   const current = inHand ? OpenDeal.currentPlayer(deal) : null;
   const myTurn = inHand && current === mySeat && !room.paused && !ui.showTrick;
   let timerText = null;
-  if (inHand && !room.paused && room.turnStartedAt) {
-    const left = room.turnStartedAt + turnLimit(room, current) - now();
+  if (inHand && !room.paused) {
+    const left = turnStart(room, st) + turnLimit(room, current) - now();
     if (left < 30000 || current === mySeat) timerText = fmtTime(left);
   }
-  const awaiting = myTurn ? { type: blob.phase === 'auction' ? 'bid' : 'play', legal: Game.currentInfoSet(game).LegalActions } : null;
+  const awaiting = myTurn ? { type: st.phase === 'auction' ? 'bid' : 'play', legal: Game.currentInfoSet(game).LegalActions } : null;
   renderTable({
     mySeat, deal, handCounts: deal.Hands.map((h) => h.length), myHand: deal.Hands[mySeat],
     names, connected, teamNames: teamShort, teamShort, score: game.Score,
-    gamesWon: room.stats.total.games, sets: room.stats.total.sets,
+    gamesWon: st.stats.total.games, sets: st.stats.total.sets,
     showTrick: ui.showTrick, trickWinner: ui.trickWinner, awaiting, hint: null, timerText, busy: ui.busy,
     prompt: room.paused ? 'Paused' : null, speech: C.speech,
   });
@@ -585,14 +559,14 @@ function renderAll() {
     setSheet(`<h2>Paused</h2><p>${escapeHtml(hostName)} paused the game.</p>` +
       `<div class="actions">${host ? '<button type="button" class="btn" data-action="resume">Resume</button>' : '<p class="sub center">Waiting for the host to resume…</p>'}` +
       `<button type="button" class="btn secondary" data-action="leave">Leave room</button></div>`, sheetAction);
-  } else if (blob.phase === 'dealOver' && !ui.showTrick) {
-    setSheet(dealSummaryHtml(blob.lastDeal, names.map((n) => n.replace(' (you)', '')), teamNames) +
+  } else if (st.phase === 'dealOver' && !ui.showTrick) {
+    setSheet(dealSummaryHtml(st.lastDeal, names.map((n) => n.replace(' (you)', '')), teamNames) +
       `<div class="actions">` +
       (host ? `<button type="button" class="btn" data-action="next">Next deal</button><button type="button" class="btn secondary" data-action="pause">Pause game</button>`
             : `<p class="sub center">Waiting for ${escapeHtml(hostName)} to deal…</p>`) +
       `</div>`, sheetAction);
-  } else if (blob.phase === 'gameOver' && !ui.showTrick) {
-    setSheet(gameOverHtml(blob.winner, blob.reason, teamNames, game.Score, room.stats.game, room.stats.total, room.stats.total.games, teamOfSeat(mySeat)) +
+  } else if (st.phase === 'gameOver' && !ui.showTrick) {
+    setSheet(gameOverHtml(st.winner, st.reason, teamNames, game.Score, st.stats.game, st.stats.total, st.stats.total.games, teamOfSeat(mySeat)) +
       `<div class="actions">` +
       (host ? `<button type="button" class="btn" data-action="rematch">Play again (same teams)</button>` : `<p class="sub center">Waiting for ${escapeHtml(hostName)} to start another game…</p>`) +
       `<button type="button" class="btn secondary" data-action="leave">Leave room</button>` +
@@ -603,10 +577,10 @@ function renderAll() {
 }
 
 async function sheetAction(action) {
-  if (action === 'next') await tx(applyNextDeal);
-  else if (action === 'rematch') await tx(applyRematch);
+  if (action === 'next') await appendMove((st, r) => (isHost(r) && st.phase === 'dealOver' ? dealMove(st, r) : undefined));
+  else if (action === 'rematch') await appendMove((st, r) => (isHost(r) && st.phase === 'gameOver' ? dealMove(st, r) : undefined));
   else if (action === 'pause') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = true; return r; });
-  else if (action === 'resume') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = false; r.turnStartedAt = now(); return r; });
+  else if (action === 'resume') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = false; r.resumedAt = now(); return r; });
   else if (action === 'leave') { if (confirm('Leave this room? The computer will play your cards if the others continue.')) leaveRoom(); }
   else if (action === 'close') { ui.menuOpen = false; renderAll(); }
   else if (action === 'home') { location.hash = ''; location.reload(); }
@@ -648,7 +622,7 @@ async function act(action) {
   ui.busy = true;
   renderAll();
   try {
-    await tx((r) => applyGameAction(r, my.seat, action));
+    await appendMove((st, r) => moveFor(st, r, my.seat, action));
   } finally {
     ui.busy = false;
     if (S && S.room) renderAll();
@@ -656,35 +630,36 @@ async function act(action) {
 }
 
 /// Every phone except the one whose turn it is arms a timer; when the turn
-/// limit passes, the first to commit a transaction plays for the absent player.
+/// limit passes, the first to append a move plays for the absent player. The
+/// slot transaction guarantees only one of them succeeds.
 function scheduleTakeover() {
   clearTimeout(ui.takeoverTimer);
   const room = S.room;
   if (!room || room.status !== 'playing' || room.paused) return;
-  const blob = parseBlob(room);
+  const st = stateOf(room);
+  if (!st.game) return;
   const my = me(room);
-  const version = room.version;
+  const seq = st.seq;
   const jitter = (my.seat || 0) * 900 + 200;
   let seat = null, due = null;
-  if (blob.phase === 'auction' || blob.phase === 'playout') {
-    seat = OpenDeal.currentPlayer(blob.game.Deal);
+  if (st.phase === 'auction' || st.phase === 'playout') {
+    seat = OpenDeal.currentPlayer(st.game.Deal);
     if (seat === my.seat) return; // my own turn: no takeover from me
-    due = room.turnStartedAt + turnLimit(room, seat) + jitter;
-  } else if (blob.phase === 'dealOver') {
+    due = turnStart(room, st) + turnLimit(room, seat) + jitter;
+  } else if (st.phase === 'dealOver') {
     if (isHost(room)) return;
-    due = room.turnStartedAt + (absent(room.players[room.hostId]) ? ABSENT_MS : TURN_MS) + jitter;
+    due = turnStart(room, st) + (absent(room.players[room.hostId]) ? ABSENT_MS : TURN_MS) + jitter;
   } else return;
 
   ui.takeoverTimer = setTimeout(async () => {
     const cur = S && S.room;
-    if (!cur || cur.version !== version) return; // something happened meanwhile
-    const b = parseBlob(cur);
+    if (!cur || stateOf(cur).seq !== seq) return; // something happened meanwhile
     if (seat !== null) {
-      const info = Game.currentInfoSet(b.game);
+      const info = Game.currentInfoSet(stateOf(cur).game);
       const { action } = chooseAction(info, rng, 200);
-      await tx((r) => (r.version !== version ? undefined : applyGameAction(r, seat, action)));
+      await appendMove((st2, r) => (st2.seq === seq ? moveFor(st2, r, seat, action) : undefined));
     } else {
-      await tx((r) => (r.version !== version ? undefined : applyNextDeal(r)));
+      await appendMove((st2, r) => (st2.seq === seq && st2.phase === 'dealOver' ? dealMove(st2, r) : undefined));
     }
   }, Math.max(0, due - now()));
 }

@@ -46,6 +46,12 @@ async function firebaseStore(cfg) {
           const r = await ref.transaction(fn, undefined, true);
           return { committed: r.committed, value: r.snapshot ? r.snapshot.val() : null };
         },
+        // transaction on one child path (e.g. 'moves/12'): the write is just
+        // that node, so appending a move costs a few bytes, not the whole room
+        async transactionAt(path, fn) {
+          const r = await ref.child(path).transaction(fn, undefined, true);
+          return { committed: r.committed, value: r.snapshot ? r.snapshot.val() : null };
+        },
         presence(pid) {
           const c = ref.child('players/' + pid + '/connected');
           c.onDisconnect().set(false);
@@ -103,6 +109,24 @@ function localStore() {
           else localStorage.setItem(key(code), JSON.stringify(out));
           chan.postMessage({ code });
           // same-tab listeners do not get BroadcastChannel/storage events
+          window.dispatchEvent(new StorageEvent('storage', { key: key(code) }));
+          return { committed: true, value: out };
+        },
+        async transactionAt(path, fn) {
+          const room = read(code);
+          const keys = path.split('/');
+          let node = room;
+          for (let i = 0; i < keys.length - 1 && node; i++) node = node[keys[i]];
+          const leaf = keys[keys.length - 1];
+          const cur = node && node[leaf] !== undefined ? JSON.parse(JSON.stringify(node[leaf])) : null;
+          const out = fn(cur);
+          if (out === undefined) return { committed: false, value: cur };
+          if (!room) return { committed: false, value: null };
+          let target = room;
+          for (let i = 0; i < keys.length - 1; i++) { if (!target[keys[i]]) target[keys[i]] = {}; target = target[keys[i]]; }
+          if (out === null) delete target[leaf]; else target[leaf] = out;
+          localStorage.setItem(key(code), JSON.stringify(room));
+          chan.postMessage({ code });
           window.dispatchEvent(new StorageEvent('storage', { key: key(code) }));
           return { committed: true, value: out };
         },

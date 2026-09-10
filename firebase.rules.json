@@ -6,7 +6,12 @@
       "$code": {
         ".read": "$code.matches(/^[A-HJ-NP-Z2-9]{5}$/)",
         ".write": "$code.matches(/^[A-HJ-NP-Z2-9]{5}$/) && (!newData.exists() || newData.child('code').val() == $code)",
-        ".validate": "!newData.exists() || newData.hasChildren(['code', 'hostId', 'status', 'players'])"
+        ".validate": "!newData.exists() || newData.hasChildren(['code', 'hostId', 'status', 'players'])",
+        "moves": {
+          "$i": {
+            ".validate": "$i.matches(/^[0-9]+$/) && newData.hasChildren(['t'])"
+          }
+        }
       }
     }
   }
