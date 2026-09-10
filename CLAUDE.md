@@ -60,4 +60,8 @@ from `main` at https://www.setbackgame.com (CNAME file). Every file is plain HTM
   several tabs with `#join=CODE` to simulate players without Firebase.
 - UX rules the owner has asked for: turn changes are a plain instant highlight (no transitions, no
   "thinking" text); a played card and a new bid animate exactly once; keep everything thumb-sized.
+- No browser `confirm()`/`alert()` dialogs: iOS suppresses them for home-screen web apps. Use `armTap`
+  (two-tap confirm) from view.js. Sheets with a Close button also close on a backdrop tap.
+- Table color is a saved theme (`lis-setback-theme`: green/navy/black/white) applied as `data-theme` on
+  `<html>` before first paint; colours in setback.css are tokens, so new themes are a variable block.
 - Deploy: commit to `main` and push; GitHub Pages publishes in about a minute.

@@ -1,5 +1,5 @@
 // Setback entry point: start screen, then single- or multi-player.
-import { setScreenHtml, $, tipHtml } from './view.js';
+import { setScreenHtml, $, tipHtml, applyTheme, getTheme } from './view.js';
 import { startSingle } from './single.js';
 import { startMulti } from './multi.js';
 import { makeStore } from './store.js';
@@ -46,6 +46,7 @@ function bindHome() {
 }
 
 async function main() {
+  applyTheme(getTheme());
   const hash = location.hash || '';
   const join = hash.match(/^#join=([A-Za-z0-9]{5})$/);
   const kv = new URLSearchParams(location.search).get('local') === '1' ? sessionStorage : localStorage;
