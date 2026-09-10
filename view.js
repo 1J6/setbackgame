@@ -446,7 +446,7 @@ export const themeLabel = () => THEMES.find(([k]) => k === getTheme())[1];
 
 export const TIP_URL = 'https://buymeacoffee.com/1j6dev';
 export const tipHtml = () =>
-  `<p class="tip"><a href="${TIP_URL}" target="_blank" rel="noopener">☕️ Enjoying the game? Buy the creator a coffee! ☕️</a></p>`;
+  `<p class="tip"><a href="${TIP_URL}" target="_blank" rel="noopener">☕️ Enjoying the game? Buy me a coffee! ☕️</a></p>`;
 
 export const rulesBlurb = () =>
   `<p class="credit">Scoring: first to ${RULES.winBid} wins, but you must bid and make it on the deal that gets you there. ` +
