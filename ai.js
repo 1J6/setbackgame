@@ -22,6 +22,10 @@ import { judgeScore } from './rules.js';
 /// 71% to 35% of deals and their set rate from 42% to 18%; a hand like
 /// 7-5-2 of trump passes, and A-10 of trump bids 2 rather than 3.
 const MIN_MAKE = { 2: 0.7, 3: 0.7, 4: 0.5 };
+/// Chance of making a bid at which the computer bids it in preference to a
+/// lower bid it could also make (people bid what they can make to keep the
+/// contract away from the others).
+const CONFIDENT = { 2: 0.7, 3: 0.85, 4: 0.8 };
 
 // ------------------------------------------------------------------ helpers
 
@@ -350,11 +354,20 @@ export function chooseBid(infoSet, rng, numWorlds = 64, opts = {}) {
   }
   values[Bid.Pass] = passTotal / worlds.length;
 
-  // pick the best; ties go to the lower bid
+  // Candidates: sound bids that beat passing. Among them, bid what the hand
+  // can confidently make (a higher bid scores no more, but it keeps the
+  // contract away from the others), else the best-valued one.
+  const conf = opts.conf || CONFIDENT;
   let best = Bid.Pass, bestV = values[Bid.Pass];
   for (const bid of legal) {
     if (bid === Bid.Pass) continue;
     if (values[bid] > bestV + 0.05) { bestV = values[bid]; best = bid; }
+  }
+  if (best !== Bid.Pass) {
+    for (const bid of legal) {
+      if (bid === Bid.Pass || bid <= best) continue;
+      if (values[bid] > values[Bid.Pass] + 0.05 && pMake[bid] >= conf[bid]) best = bid;
+    }
   }
   return { bid: best, values, trumpSuit: bestSuit, pMake };
 }
@@ -362,13 +375,14 @@ export function chooseBid(infoSet, rng, numWorlds = 64, opts = {}) {
 // ---------------------------------------------------------------- playing
 
 /// Chooses a card. Returns { card, values } where values maps card -> mean utility.
-export function choosePlay(infoSet, rng, numWorlds = 64) {
+export function choosePlay(infoSet, rng, numWorlds = 64, opts = {}) {
   const { Player: seat, Hand: hand, Deal: deal, GameScore: gameScore } = infoSet;
   const p = deal.Playout;
   const legal = Playout.legalPlays(hand, p);
   if (legal.length === 1) return { card: legal[0], values: { [legal[0]]: 0 } };
   const team = teamOfSeat(seat);
   const bidderTeam = teamOfSeat(p.Bidder);
+
 
   // The opening lead names trump, and the conventional lead is the top card
   // of the suit (it draws trumps and secures High); restricting the candidates
@@ -416,7 +430,7 @@ export function choosePlay(infoSet, rng, numWorlds = 64) {
 /// Chooses any action for the given information set.
 export function chooseAction(infoSet, rng, numWorlds, opts = {}) {
   if (infoSet.Deal.Playout) {
-    const r = choosePlay(infoSet, rng, numWorlds);
+    const r = choosePlay(infoSet, rng, numWorlds, opts);
     return { action: { card: r.card }, values: r.values };
   }
   const r = chooseBid(infoSet, rng, numWorlds, opts);
