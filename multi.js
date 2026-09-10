@@ -7,12 +7,13 @@
 // from the newer state. Room-level changes (players, host, pause) are
 // transactions on the room document.
 import { Bid, teamOfSeat, OpenDeal, Game } from './engine.js';
-import { chooseAction } from './ai.js';
+import { chooseAction, chooseBid, choosePlay } from './ai.js';
+import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
 import { replay, validate, movesArray, newSeed } from './replay.js';
 import { saveGameRecord } from './history.js';
 import {
   $, sleep, renderTable, resetTableCache, showScreen, setScreenHtml, setSheet, toast, escapeHtml,
-  dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml, armTap, nextTheme, themeLabel,
+  dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml, armTap, nextTheme, themeLabel, soundOn, setSoundOn, cue,
 } from './view.js';
 
 const TURN_MS = 60000;      // a player has one minute before the computer plays for them
@@ -27,6 +28,7 @@ const BOT_MS = 1200;           // a computer seat plays this quickly
 const BOT_NAMES = ['Bot Ada', 'Bot Max', 'Bot Ivy'];
 const OPEN_MAX_AGE = 15 * 60 * 1000; // ignore quick-play index entries older than this
 const NAME_KEY = 'lis-setback-name';
+const MSET_KEY = 'lis-setback-msettings';
 
 const rng = Math.random;
 // Identity persists per device so a reload rejoins the same seat. In local
@@ -40,6 +42,8 @@ function getPid() {
   if (!pid) { pid = 'p' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); store(PID_KEY, pid); }
   return pid;
 }
+const msettings = Object.assign({ coach: false }, load(MSET_KEY) || {});
+const saveMsettings = () => store(MSET_KEY, msettings);
 const makeCode = () => Array.from({ length: 5 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join('');
 
 // ------------------------------------------------------------- session
@@ -49,6 +53,7 @@ const ui = {
   dealNo: -1, completed: 0, showTrick: null, trickWinner: null, trickTimer: null,
   busy: false, noticeId: null, takeoverTimer: null, tick: null, pendingName: null, intent: null, leaving: false,
   starting: false, openKey: null, savedGame: null,
+  coach: null, coachRec: null, hint: null, coachSeq: -1, rejoinNote: false, myTurnSeq: -1,
 };
 
 // ---------------------------------------------------------------- chat
@@ -297,6 +302,7 @@ function updateOpenIndex(room) {
 
 async function attach(code) {
   detach();
+  ui.rejoinNote = !!(S.room === null && load(ROOM_KEY) && load(ROOM_KEY).code === code);
   S.code = code;
   S.ref = S.store.open(code);
   store(ROOM_KEY, { code, pid: S.pid });
@@ -315,6 +321,7 @@ function detach() {
   ui.takeoverTimer = null; ui.tick = null; ui.trickTimer = null; ui.showTrick = null; ui.dealNo = -1;
   stCache.code = null; stCache.len = -1; stCache.st = null;
   ui.openKey = null; ui.starting = false; ui.savedGame = null;
+  ui.coach = null; ui.coachRec = null; ui.hint = null; ui.coachSeq = -1; ui.myTurnSeq = -1;
 }
 
 async function leaveRoom() {
@@ -369,8 +376,9 @@ function bindScreen(handlers) {
 
 const onlineText = (n) => (n === null || n === undefined ? '' : `${n} player${n === 1 ? '' : 's'} online now`);
 
-function showChoose() {
+function showChoose(note = '') {
   setScreenHtml(screenShell('Multiplayer',
+    (note ? `<p class="error">${escapeHtml(note)}</p>` : '') +
     `<p class="sub">Four players, each on their own phone. One person creates a game and shares the five-letter code; the other three join with it.</p>` +
     `<div class="actions">` +
     `<button type="button" class="btn big" data-action="quick">Quick play<small>Random players; starts within 40 seconds, computers fill empty seats</small></button>` +
@@ -476,7 +484,8 @@ function renderLobby(room) {
   const list = ps.map((p) =>
     `<li><span class="dot ${p.connected === false ? 'off' : 'on'}"></span> ${escapeHtml(p.name)}` +
     `${p.id === S.pid ? ' <span class="tag">you</span>' : ''}${p.id === room.hostId ? ' <span class="tag">host</span>' : ''}` +
-    `<span class="team-tag">${p.team === null || p.team === undefined ? 'no team' : 'Team ' + (p.team + 1)}</span></li>`).join('');
+    `<span class="team-tag">${p.team === null || p.team === undefined ? 'no team' : 'Team ' + (p.team + 1)}</span>` +
+    `${host && p.id !== S.pid ? `<button type="button" class="kick" data-action="kick" data-pid="${p.id}" aria-label="Remove ${escapeHtml(p.name)}">✕</button>` : ''}</li>`).join('');
   const teamBtn = (t) => {
     const onIt = my && my.team === t;
     const full = teamCount(t) >= 2 && !onIt;
@@ -492,6 +501,7 @@ function renderLobby(room) {
     `<h3>Teams</h3><p class="sub">Partners sit across from each other. Two per team.</p>` +
     `<div class="actions">${teamBtn(0)}${teamBtn(1)}` +
     (host ? `<button type="button" class="btn secondary" data-action="random" ${ps.length < 2 ? 'disabled' : ''}>Randomize teams</button>` : '') +
+    (host && ps.length < 4 ? `<button type="button" class="btn secondary" data-action="fill">Fill empty seats with computers and start</button>` : '') +
     (host ? `<button type="button" class="btn big" data-action="start" ${ready ? '' : 'disabled'}>${ready ? 'Start game' : ps.length < 4 ? `Waiting for ${4 - ps.length} more player${ps.length === 3 ? '' : 's'}…` : 'Teams must be 2 and 2'}</button>`
           : `<p class="sub center">${ready ? `Waiting for ${escapeHtml((ps.find((p) => p.id === room.hostId) || {}).name || 'the host')} to start…` : 'Waiting for everyone to join and pick teams…'}</p>`) +
     `<button type="button" class="btn secondary" data-action="chat">Chat${C.msgs.length > C.seen ? ` (${C.msgs.length - C.seen} new)` : ''}</button>` +
@@ -516,7 +526,9 @@ function renderLobby(room) {
       return r;
     }),
     start: () => startGame(),
+    fill: (btn) => { if (armTap(btn, 'Tap again to start with computers')) tx(fillStartTx); },
     chat: () => chatOpen(true),
+    kick: (btn) => { if (armTap(btn, '✕?')) tx((r) => { if (r.hostId !== S.pid || r.status !== 'lobby' || !r.players[btn.dataset.pid]) return undefined; delete r.players[btn.dataset.pid]; return r; }); },
     leave: (btn) => { if (armTap(btn, 'Tap again to leave')) leaveRoom(); },
   });
 }
@@ -560,6 +572,23 @@ function quickStartTx(r) {
   return startTx(r);
 }
 
+/// Code rooms: computers take the empty seats, chosen teams are kept.
+function fillStartTx(r) {
+  if (r.hostId !== S.pid || r.status !== 'lobby') return undefined;
+  for (let b = 0; Object.keys(r.players || {}).length < 4; b++) {
+    r.players['bot' + b] = { name: BOT_NAMES[b], bot: true, team: null, connected: true, joinedAt: now() + b };
+  }
+  const ids = Object.keys(r.players);
+  const count = [0, 0];
+  ids.forEach((id) => { const t = r.players[id].team; if (t === 0 || t === 1) count[t]++; });
+  for (const id of ids) {
+    const p = r.players[id];
+    if (p.team !== 0 && p.team !== 1) { p.team = count[0] <= count[1] ? 0 : 1; count[p.team]++; }
+  }
+  if (count[0] !== 2 || count[1] !== 2) return undefined;
+  return startTx(r);
+}
+
 function tickLobby() {
   const room = S && S.room;
   if (!room || room.status !== 'lobby' || !room.public) return;
@@ -596,7 +625,8 @@ function onRoom(room) {
   }
   if (!room.players || !room.players[S.pid]) {
     // we are not (or no longer) in this room
-    detach(); store(ROOM_KEY, null); showChoose();
+    const wasIn = !!S.room;
+    detach(); store(ROOM_KEY, null); showChoose(wasIn ? 'You were removed from the room by the host.' : '');
     return;
   }
   if (room.fmt !== ROOM_FMT) {
@@ -634,6 +664,16 @@ function onRoom(room) {
 
   // notices
   if (st.notice && st.notice.id !== ui.noticeId) { ui.noticeId = st.notice.id; if (prev) toast(st.notice.text, 1500); }
+  if (ui.rejoinNote) { ui.rejoinNote = false; setTimeout(() => toast(`You're back in room ${room.code}. Leave from the menu if you meant to quit.`, 2600), 300); }
+
+  // coach: review the move we just made, then clear once the deal is over
+  if (ui.coachRec && st.seq > ui.coachRec.seq) {
+    const m = movesArray(room.moves)[ui.coachRec.seq];
+    const { rec, short, playing } = ui.coachRec;
+    ui.coach = m ? (playing && m.c !== undefined ? reviewPlay(rec, Number(m.c), short) : !playing && m.b !== undefined ? reviewBid(rec, Number(m.b), short) : null) : null;
+    ui.coachRec = null; ui.hint = null;
+  }
+  if (st.phase !== 'auction' && st.phase !== 'playout') { ui.coach = null; ui.coachRec = null; ui.hint = null; }
 
   // hold a just-finished trick on the table for a moment
   const p = st.game.Deal.ClosedDeal.Playout;
@@ -680,12 +720,15 @@ function renderAll() {
     if (left < 30000 || current === mySeat) timerText = fmtTime(left);
   }
   const awaiting = myTurn ? { type: st.phase === 'auction' ? 'bid' : 'play', legal: Game.currentInfoSet(game).LegalActions } : null;
+  if (myTurn && ui.myTurnSeq !== st.seq) { ui.myTurnSeq = st.seq; cue('turn'); }
+  const coachOn = !room.public && msettings.coach;
+  if (coachOn && myTurn && ui.coachSeq !== st.seq) { ui.coachSeq = st.seq; requestMultiCoach(st, mySeat); }
   renderTable({
     mySeat, deal, handCounts: deal.Hands.map((h) => h.length), myHand: deal.Hands[mySeat],
     names, connected, teamNames: teamShort, teamShort, score: game.Score,
     gamesWon: st.stats.total.games, sets: st.stats.total.sets,
-    showTrick: ui.showTrick, trickWinner: ui.trickWinner, awaiting, hint: null, timerText, busy: ui.busy,
-    prompt: room.paused ? 'Paused' : null, speech: C.speech,
+    showTrick: ui.showTrick, trickWinner: ui.trickWinner, awaiting, hint: coachOn ? ui.hint : null, timerText, busy: ui.busy,
+    prompt: room.paused ? 'Paused' : null, speech: C.speech, coach: coachOn ? ui.coach : null,
   });
 
   // sheets
@@ -712,12 +755,40 @@ function renderAll() {
   }
 }
 
+/// Coach for friends' rooms: computes the recommendation for my turn off the
+/// tap path and shows it with the explanation; only this phone sees it.
+function requestMultiCoach(st, mySeat) {
+  const seq = st.seq;
+  setTimeout(() => {
+    const cur = S && S.room;
+    if (!cur) return;
+    const st2 = stateOf(cur);
+    if (st2.seq !== seq || !msettings.coach) return;
+    const info = Game.currentInfoSet(st2.game);
+    const playing = !!info.Deal.Playout;
+    const rec = playing ? choosePlay(info, rng, 150) : chooseBid(info, rng, 150);
+    const partner = (mySeat + 2) % 4;
+    const names = [0, 1, 2, 3].map((s) => { const p = pidAtSeat(cur, s); return s === mySeat ? 'you' : s === partner ? 'your partner' : (p ? p.name : 'the next player'); });
+    const c = playing ? coachPlay(info, rec, names) : coachBid(info, rec, names);
+    ui.coach = c.html;
+    ui.hint = playing ? { card: rec.card } : { bid: rec.bid };
+    ui.coachRec = { rec, short: c.short, playing, seq };
+    renderAll();
+  }, 30);
+}
+
 async function sheetAction(action, btn) {
   if (action === 'next') await appendMove((st, r) => (isHost(r) && st.phase === 'dealOver' ? dealMove(st, r) : undefined));
   else if (action === 'rematch') await appendMove((st, r) => (isHost(r) && st.phase === 'gameOver' ? dealMove(st, r) : undefined));
   else if (action === 'pause') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = true; return r; });
   else if (action === 'resume') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = false; r.resumedAt = now(); return r; });
-  else if (action === 'leave') { if (armTap(btn, 'Tap again to leave (the computer plays your cards)')) leaveRoom(); }
+  else if (action === 'leave') { if (armTap(btn, S.room && S.room.public ? 'Tap again to leave (a computer takes your seat)' : 'Tap again to leave (the computer plays your cards)')) leaveRoom(); }
+  else if (action === 'kick' && btn) {
+    if (armTap(btn, `Tap again to remove`)) await tx((r) => { const p = r.players[btn.dataset.pid]; if (r.hostId !== S.pid || !p || p.bot) return undefined; p.left = true; p.connected = false; return r; });
+    if (S && S.room) renderMenuSheet();
+  }
+  else if (action === 'mcoach') { msettings.coach = !msettings.coach; saveMsettings(); if (!msettings.coach) { ui.coach = null; ui.coachRec = null; ui.hint = null; } ui.coachSeq = -1; renderMenuSheet(); renderAll(); }
+  else if (action === 'sound') { setSoundOn(!soundOn()); if (soundOn()) cue('turn'); renderMenuSheet(); }
   else if (action === 'close') { ui.menuOpen = false; renderAll(); }
   else if (action === 'theme') { nextTheme(); renderMenuSheet(); }
   else if (action === 'home') { location.hash = ''; location.reload(); }
@@ -750,7 +821,11 @@ function renderMenuSheet() {
       `<p class="sub">${players(room).filter((p) => !p.left).map((p) => `<span class="dot ${p.connected === false ? 'off' : 'on'}"></span> ${escapeHtml(p.name)}`).join(' &nbsp; ')}</p>` +
       `<div class="actions">` +
       (hostAbsent ? `<button type="button" class="btn" data-action="becomehost">Take over as host (host is away)</button>` : '') +
+      (room.public ? '' : `<button type="button" class="btn secondary row" data-action="mcoach"><span>Coach mode<small>Explains your recommended move; only you see it</small></span><span>${msettings.coach ? 'On' : 'Off'}</span></button>`) +
+      `<button type="button" class="btn secondary row" data-action="sound"><span>Sound &amp; vibration<small>A soft cue when it is your turn</small></span><span>${soundOn() ? 'On' : 'Off'}</span></button>` +
       `<button type="button" class="btn secondary row" data-action="theme"><span>Table color</span><span>${themeLabel()}</span></button>` +
+      (isHost(room) ? players(room).filter((p) => p.id !== S.pid && !p.bot && !p.left).map((p) =>
+        `<button type="button" class="btn secondary row" data-action="kick" data-pid="${p.id}"><span>Remove ${escapeHtml(p.name)}<small>The computer takes over their seat</small></span><span>✕</span></button>`).join('') : '') +
       `<a class="btn secondary row" href="rules.html" style="text-decoration:none;display:flex"><span>Rules of Setback</span><span>›</span></a>` +
       `<button type="button" class="btn danger" data-action="leave">Leave room</button>` +
       `<button type="button" class="btn secondary" data-action="close">Close</button>` +
@@ -825,6 +900,12 @@ export async function startMulti(storeImpl, joinCode) {
   if (joinCode && CODE_RE.test(joinCode)) {
     if (saved && saved.code === joinCode && saved.pid === S.pid) { await attach(joinCode); return; }
     ui.intent = { kind: 'join', code: joinCode };
+    const remembered = load(NAME_KEY);
+    if (remembered) {
+      // an invite link with a remembered name goes straight to the room
+      try { await joinRoom(joinCode, remembered); await attach(joinCode); return; }
+      catch (err) { showName(err.message || String(err)); return; }
+    }
     showName();
     return;
   }

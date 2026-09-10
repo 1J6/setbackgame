@@ -384,6 +384,42 @@ export function gameOverHtml(winner, reason, teamNames, score, statsGame, statsT
     `</tbody></table>`;
 }
 
+// ------------------------------------------------------- sound & haptics
+
+const SOUND_KEY = 'lis-setback-sound';
+let audioCtx = null;
+export function soundOn() { try { return localStorage.getItem(SOUND_KEY) === 'on'; } catch { return false; } }
+export function setSoundOn(on) { try { localStorage.setItem(SOUND_KEY, on ? 'on' : 'off'); } catch { /* ignore */ } if (on) unlockAudio(); }
+/// Browsers only allow audio after a user gesture; call from any tap.
+export function unlockAudio() {
+  try {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  } catch { /* no audio */ }
+}
+function tone(freq, at, dur, gain) {
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = 'sine'; o.frequency.value = freq;
+  g.gain.setValueAtTime(0, at);
+  g.gain.linearRampToValueAtTime(gain, at + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, at + dur);
+  o.connect(g).connect(audioCtx.destination);
+  o.start(at); o.stop(at + dur + 0.02);
+}
+/// A soft cue: 'turn' when it becomes your turn, 'trick' when you take a trick.
+export function cue(kind) {
+  if (!soundOn()) return;
+  try { if (navigator.vibrate) navigator.vibrate(kind === 'turn' ? 30 : 15); } catch { /* ignore */ }
+  try {
+    unlockAudio();
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    const t = audioCtx.currentTime;
+    if (kind === 'turn') { tone(660, t, 0.09, 0.12); tone(880, t + 0.09, 0.14, 0.12); }
+    else tone(520, t, 0.08, 0.08);
+  } catch { /* ignore */ }
+}
+document.addEventListener('pointerdown', () => { if (soundOn()) unlockAudio(); }, { passive: true });
+
 // ------------------------------------------------------------- theme
 
 export const THEMES = [['green', 'Green'], ['navy', 'Navy'], ['black', 'Black'], ['white', 'White']];

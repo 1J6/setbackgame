@@ -5,7 +5,7 @@ import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
 import { newSeed, seededRng, replay } from './replay.js';
 import { saveGameRecord } from './history.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
-import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml, nextTheme, themeLabel } from './view.js';
+import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml, nextTheme, themeLabel, soundOn, setSoundOn, cue } from './view.js';
 
 const USER = Seat.South;
 const STORAGE_KEY = 'lis-setback-v2';
@@ -96,6 +96,7 @@ async function showMenu() {
     `<button type="button" class="btn row" data-action="hints"><span>Hints only<small>★ marks the computer's choice, no explanation</small></span><span>${settings.hints ? 'On' : 'Off'}</span></button>` +
     `<button type="button" class="btn row" data-action="speed"><span>Speed</span><span>${settings.speed === 'fast' ? 'Fast' : 'Normal'}</span></button>` +
     `<button type="button" class="btn row" data-action="theme"><span>Table color</span><span>${themeLabel()}</span></button>` +
+    `<button type="button" class="btn row" data-action="sound"><span>Sound &amp; vibration<small>A soft cue when it is your turn</small></span><span>${soundOn() ? 'On' : 'Off'}</span></button>` +
     `<a class="btn secondary row" href="rules.html" style="text-decoration:none;display:flex"><span>Rules of Setback</span><span>›</span></a>` +
     `<button type="button" class="btn secondary" data-action="home">Back to start (single / multiplayer)</button>` +
     `<button type="button" class="btn danger" data-action="newgame">${armNew ? 'Tap again to abandon this game' : 'Abandon this game and start over'}</button>` +
@@ -115,6 +116,7 @@ async function showMenu() {
     }
     if (action === 'speed') { settings.speed = settings.speed === 'fast' ? 'normal' : 'fast'; saveSettings(); continue; }
     if (action === 'theme') { nextTheme(); continue; }
+    if (action === 'sound') { setSoundOn(!soundOn()); if (soundOn()) cue('turn'); continue; }
     if (action === 'home') { location.hash = ''; location.reload(); return; }
     if (action === 'newgame') {
       if (!armNew) { armNew = true; continue; }
@@ -153,6 +155,7 @@ async function requestHint() {
 }
 
 function userAction(info) {
+  cue('turn');
   return new Promise((resolve) => {
     ui.awaiting = {
       type: info.Deal.Playout ? 'play' : 'bid',
