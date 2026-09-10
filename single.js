@@ -64,9 +64,15 @@ if (pers.version === 1) {
 if (!Array.isArray(pers.log)) pers.log = null; // a game saved before logging existed cannot be recorded
 const save = () => store(STORAGE_KEY, pers);
 
-const timing = () => settings.speed === 'fast'
-  ? { think: 120, bid: 260, play: 240, trickShow: 650, dealIn: 250 }
-  : { think: 420, bid: 600, play: 520, trickShow: 1250, dealIn: 450 };
+// Delays between computer moves and how long a finished trick stays up.
+const TIMINGS = {
+  fast:   { think: 120, bid: 260, play: 240, trickShow: 650, dealIn: 250 },
+  normal: { think: 420, bid: 600, play: 520, trickShow: 1250, dealIn: 450 },
+  slow:   { think: 800, bid: 1000, play: 900, trickShow: 2000, dealIn: 700 },
+};
+const SPEEDS = ['fast', 'normal', 'slow'];
+const timing = () => TIMINGS[settings.speed] || TIMINGS.normal;
+const speedLabel = () => ({ fast: 'Fast', normal: 'Normal', slow: 'Slow' }[settings.speed] || 'Normal');
 
 let numWorlds = 300;
 
@@ -135,7 +141,7 @@ async function showMenu() {
     `<div class="actions">` +
     `<button type="button" class="btn row" data-action="coach"><span>Coach mode<small>Explains the recommended bid or card, then reviews your choice</small></span><span>${settings.coach ? 'On' : 'Off'}</span></button>` +
     `<button type="button" class="btn row" data-action="hints"><span>Hints only<small>★ marks the computer's choice, no explanation</small></span><span>${settings.hints ? 'On' : 'Off'}</span></button>` +
-    `<button type="button" class="btn row" data-action="speed"><span>Speed</span><span>${settings.speed === 'fast' ? 'Fast' : 'Normal'}</span></button>` +
+    `<button type="button" class="btn row" data-action="speed"><span>Speed<small>How quickly the computer players move</small></span><span>${speedLabel()}</span></button>` +
     `<button type="button" class="btn row" data-action="theme"><span>Table color</span><span>${themeLabel()}</span></button>` +
     `<button type="button" class="btn row" data-action="sound"><span>Sound &amp; vibration<small>A soft cue when it is your turn</small></span><span>${soundOn() ? 'On' : 'Off'}</span></button>` +
     `<a class="btn secondary row" href="rules.html" style="text-decoration:none;display:flex"><span>Rules of Setback</span><span>›</span></a>` +
@@ -155,7 +161,7 @@ async function showMenu() {
       else { ui.coach = null; ui.coachRec = null; if (!settings.hints) ui.hint = null; render(); }
       continue;
     }
-    if (action === 'speed') { settings.speed = settings.speed === 'fast' ? 'normal' : 'fast'; saveSettings(); continue; }
+    if (action === 'speed') { settings.speed = SPEEDS[(SPEEDS.indexOf(settings.speed) + 1) % SPEEDS.length]; saveSettings(); continue; }
     if (action === 'theme') { nextTheme(); continue; }
     if (action === 'sound') { setSoundOn(!soundOn()); if (soundOn()) cue('turn'); continue; }
     if (action === 'home') { location.hash = ''; location.reload(); return; }
