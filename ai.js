@@ -415,12 +415,17 @@ export function choosePlay(infoSet, rng, numWorlds = 64, opts = {}) {
   // Near-equal candidates (the rollouts often rate the ace and king of trump
   // identically): prefer what the rollout policy would do, otherwise the
   // higher card when leading and the cheaper card when following.
-  const ties = cands.filter((c) => values[c] >= bestV - 0.02);
+  // Leading a sure-winner trump is what people expect; it gets a wider window
+  // (about a sixth of a point) since half of the search's deviations from it
+  // are within noise anyway.
+  const pol = policyPlay(hand, p, seat);
+  const leading = p.CurrentTrick.Cards.length === 0;
+  const sureTrumpLead = leading && p.Trump !== null && Card.suit(pol) === p.Trump && Card.rank(pol) > topOutstandingTrump(hand, p);
+  const eps = opts.tieEps !== undefined ? opts.tieEps : sureTrumpLead ? 0.15 : 0.02;
+  const ties = cands.filter((c) => values[c] >= bestV - eps);
   if (ties.length > 1) {
-    const pol = policyPlay(hand, p, seat);
     if (ties.includes(pol)) best = pol;
     else {
-      const leading = p.CurrentTrick.Cards.length === 0;
       best = ties.reduce((a, b) => ((leading ? Card.rank(b) > Card.rank(a) : Card.rank(b) < Card.rank(a)) ? b : a));
     }
   }
