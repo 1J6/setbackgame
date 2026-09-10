@@ -21,7 +21,7 @@ const ROOM_KEY = 'lis-setback-room';
 const PID_KEY = 'lis-setback-pid';
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const CODE_RE = /^[A-HJ-NP-Z2-9]{5}$/;
-const QUICK_WAIT_MS = 20000;   // a quick-play room starts after this, computers filling empty seats
+const QUICK_WAIT_MS = 40000;   // a quick-play room starts after this, computers filling empty seats
 const BOT_MS = 1200;           // a computer seat plays this quickly
 const BOT_NAMES = ['Bot Ada', 'Bot Max', 'Bot Ivy'];
 const OPEN_MAX_AGE = 15 * 60 * 1000; // ignore quick-play index entries older than this
@@ -372,7 +372,7 @@ function showChoose() {
   setScreenHtml(screenShell('Multiplayer',
     `<p class="sub">Four players, each on their own phone. One person creates a game and shares the five-letter code; the other three join with it.</p>` +
     `<div class="actions">` +
-    `<button type="button" class="btn big" data-action="quick">Quick play<small>Random players; starts within 20 seconds, computers fill empty seats</small></button>` +
+    `<button type="button" class="btn big" data-action="quick">Quick play<small>Random players; starts within 40 seconds, computers fill empty seats</small></button>` +
     `<button type="button" class="btn big secondary" data-action="create">Create a game<small>Get a code to share with friends</small></button>` +
     `<button type="button" class="btn big secondary" data-action="join">Join a game<small>Enter a friend's code</small></button>` +
     `</div>` +
