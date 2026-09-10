@@ -3,7 +3,7 @@ import { Bid, Seat, SEAT_NAMES, TEAM_NAMES, TEAM_LONG_NAMES, teamOfSeat, seatInc
 import { chooseAction, chooseBid, choosePlay } from './ai.js';
 import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
-import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml } from './view.js';
+import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml, nextTheme, themeLabel } from './view.js';
 
 const USER = Seat.South;
 const STORAGE_KEY = 'lis-setback-v2';
@@ -70,15 +70,17 @@ const render = () => renderTable(vm());
 // ---------------------------------------------------------------- menu
 
 async function showMenu() {
+  let armNew = false;
   const html = () =>
     `<h2>Single player</h2>` +
     `<div class="actions">` +
     `<button type="button" class="btn row" data-action="coach"><span>Coach mode<small>Explains the recommended bid or card, then reviews your choice</small></span><span>${settings.coach ? 'On' : 'Off'}</span></button>` +
     `<button type="button" class="btn row" data-action="hints"><span>Hints only<small>★ marks the computer's choice, no explanation</small></span><span>${settings.hints ? 'On' : 'Off'}</span></button>` +
     `<button type="button" class="btn row" data-action="speed"><span>Speed</span><span>${settings.speed === 'fast' ? 'Fast' : 'Normal'}</span></button>` +
+    `<button type="button" class="btn row" data-action="theme"><span>Table color</span><span>${themeLabel()}</span></button>` +
     `<a class="btn secondary row" href="rules.html" style="text-decoration:none;display:flex"><span>Rules of Setback</span><span>›</span></a>` +
     `<button type="button" class="btn secondary" data-action="home">Back to start (single / multiplayer)</button>` +
-    `<button type="button" class="btn danger" data-action="newgame">Abandon this game and start over</button>` +
+    `<button type="button" class="btn danger" data-action="newgame">${armNew ? 'Tap again to abandon this game' : 'Abandon this game and start over'}</button>` +
     `<button type="button" class="btn secondary" data-action="close">Close</button>` +
     `</div>` + rulesBlurb() +
     `<p class="credit">You play South; North is your partner. Heavily modified from Brian Berns' Setback ` +
@@ -94,9 +96,11 @@ async function showMenu() {
       continue;
     }
     if (action === 'speed') { settings.speed = settings.speed === 'fast' ? 'normal' : 'fast'; saveSettings(); continue; }
+    if (action === 'theme') { nextTheme(); continue; }
     if (action === 'home') { location.hash = ''; location.reload(); return; }
     if (action === 'newgame') {
-      if (confirm('Abandon the current game and start a new one? Running totals are kept.')) {
+      if (!armNew) { armNew = true; continue; }
+      {
         pers.game = Game.create(rng, seatIncr(1, pers.game.Deal.ClosedDeal.Auction.Dealer));
         pers.finished = null; pers.reason = null; pers.stats.game = emptyStats(); pers.scoreBefore = [0, 0];
         save();

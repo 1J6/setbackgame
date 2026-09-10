@@ -11,7 +11,7 @@ import { chooseAction } from './ai.js';
 import { replay, validate, movesArray, newSeed } from './replay.js';
 import {
   $, sleep, renderTable, resetTableCache, showScreen, setScreenHtml, setSheet, toast, escapeHtml,
-  dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml,
+  dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml, armTap, nextTheme, themeLabel,
 } from './view.js';
 
 const TURN_MS = 60000;      // a player has one minute before the computer plays for them
@@ -516,7 +516,7 @@ function renderLobby(room) {
     }),
     start: () => startGame(),
     chat: () => chatOpen(true),
-    leave: () => { if (confirm('Leave this room?')) leaveRoom(); },
+    leave: (btn) => { if (armTap(btn, 'Tap again to leave')) leaveRoom(); },
   });
 }
 
@@ -699,13 +699,14 @@ function renderAll() {
   }
 }
 
-async function sheetAction(action) {
+async function sheetAction(action, btn) {
   if (action === 'next') await appendMove((st, r) => (isHost(r) && st.phase === 'dealOver' ? dealMove(st, r) : undefined));
   else if (action === 'rematch') await appendMove((st, r) => (isHost(r) && st.phase === 'gameOver' ? dealMove(st, r) : undefined));
   else if (action === 'pause') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = true; return r; });
   else if (action === 'resume') await tx((r) => { if (r.hostId !== S.pid) return undefined; r.paused = false; r.resumedAt = now(); return r; });
-  else if (action === 'leave') { if (confirm('Leave this room? The computer will play your cards if the others continue.')) leaveRoom(); }
+  else if (action === 'leave') { if (armTap(btn, 'Tap again to leave (the computer plays your cards)')) leaveRoom(); }
   else if (action === 'close') { ui.menuOpen = false; renderAll(); }
+  else if (action === 'theme') { nextTheme(); renderMenuSheet(); }
   else if (action === 'home') { location.hash = ''; location.reload(); }
   else if (action === 'becomehost') await tx((r) => { const h = r.players[r.hostId]; if (!absent(h)) return undefined; r.hostId = S.pid; return r; });
 }
@@ -723,20 +724,27 @@ function bindTable() {
   };
   $('menuBtn').onclick = () => {
     if (!$('overlay').hidden) return;
+    ui.menuOpen = true;
+    renderMenuSheet();
+  };
+}
+
+function renderMenuSheet() {
+  {
     const room = S.room;
     const hostAbsent = absent(room.players[room.hostId]) && room.hostId !== S.pid;
-    ui.menuOpen = true;
     setSheet(`<h2>Room ${room.code}</h2>` +
       `<p class="sub">${players(room).filter((p) => !p.left).map((p) => `<span class="dot ${p.connected === false ? 'off' : 'on'}"></span> ${escapeHtml(p.name)}`).join(' &nbsp; ')}</p>` +
       `<div class="actions">` +
       (hostAbsent ? `<button type="button" class="btn" data-action="becomehost">Take over as host (host is away)</button>` : '') +
+      `<button type="button" class="btn secondary row" data-action="theme"><span>Table color</span><span>${themeLabel()}</span></button>` +
       `<a class="btn secondary row" href="rules.html" style="text-decoration:none;display:flex"><span>Rules of Setback</span><span>›</span></a>` +
       `<button type="button" class="btn danger" data-action="leave">Leave room</button>` +
       `<button type="button" class="btn secondary" data-action="close">Close</button>` +
       `</div>` + rulesBlurb() +
       `<p class="credit">If a player does not move within a minute (or eight seconds when their phone is disconnected), the computer plays that turn for them.` +
       (room.public ? ' This is a quick-play room: chat is limited to the quick phrases, and anyone who joins takes over a computer seat.' : '') + `</p>` + tipHtml(), sheetAction);
-  };
+  }
 }
 
 async function act(action) {

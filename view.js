@@ -277,6 +277,26 @@ function ensureSheetListener() {
     if (!btn || !sheetHandler) return;
     sheetHandler(btn.dataset.action, btn);
   });
+  // tapping the backdrop closes a sheet that offers a Close button
+  const overlay = $('overlay');
+  overlay.addEventListener('click', (e) => {
+    if (e.target !== overlay || !sheetHandler) return;
+    if (!sheet.querySelector('[data-action="close"]')) return;
+    sheetHandler('close', null);
+  });
+}
+
+/// Two-tap guard for destructive buttons (browser confirm() dialogs are
+/// unreliable on phones, especially home-screen web apps): the first tap
+/// re-labels the button, a second tap within a few seconds confirms.
+export function armTap(btn, label = 'Tap again to confirm') {
+  if (!btn) return true;
+  if (btn.dataset.armed) { delete btn.dataset.armed; return true; }
+  btn.dataset.armed = '1';
+  const was = btn.innerHTML;
+  btn.textContent = label;
+  setTimeout(() => { if (btn.dataset.armed) { delete btn.dataset.armed; btn.innerHTML = was; } }, 4000);
+  return false;
 }
 
 /// One-shot sheet: resolves with the data-action tapped, then hides.
@@ -353,6 +373,28 @@ export function gameOverHtml(winner, reason, teamNames, score, statsGame, statsT
     `<tr><td>Times set</td><td>${statsTotal.sets[0]}</td><td>${statsTotal.sets[1]}</td></tr>` +
     `</tbody></table>`;
 }
+
+// ------------------------------------------------------------- theme
+
+export const THEMES = [['green', 'Green'], ['navy', 'Navy'], ['black', 'Black'], ['white', 'White']];
+const THEME_KEY = 'lis-setback-theme';
+const THEME_BAR = { green: '#0f2a1f', navy: '#101a36', black: '#151517', white: '#faf7f0' };
+export function getTheme() {
+  try { const t = localStorage.getItem(THEME_KEY); return THEMES.some(([k]) => k === t) ? t : 'green'; } catch { return 'green'; }
+}
+export function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = THEME_BAR[t] || THEME_BAR.green;
+}
+export function nextTheme() {
+  const i = THEMES.findIndex(([k]) => k === getTheme());
+  const t = THEMES[(i + 1) % THEMES.length][0];
+  try { localStorage.setItem(THEME_KEY, t); } catch { /* ignore */ }
+  applyTheme(t);
+  return t;
+}
+export const themeLabel = () => THEMES.find(([k]) => k === getTheme())[1];
 
 export const TIP_URL = 'https://buymeacoffee.com/1j6dev';
 export const tipHtml = () =>
