@@ -23,10 +23,10 @@
   --ns: #8fd0ee;
   --card: #faf6ec;                 /* card faces (stay light in every theme) */
   --on-brass: #0b1d15;             /* text on brass and on the winner tag */
-  --bar: var(--bar);     /* header, bid panel, toast */
-  --chip: var(--chip);    /* chips, inputs, list rows, coach box */
-  --red-soft: var(--red-soft);             /* red suits on dark ground */
-  --danger-text: var(--danger-text);
+  --bar: rgba(8, 26, 19, 0.9);     /* header, bid panel, toast */
+  --chip: rgba(8, 26, 19, 0.5);    /* chips, inputs, list rows, coach box */
+  --red-soft: #f28b8b;             /* red suits on dark ground */
+  --danger-text: #f0a3a3;
   --card-w: clamp(46px, 14.6vw, 84px);
   --card-h: calc(var(--card-w) * 1.42);
   --trick-w: clamp(38px, 11.5vw, 66px);
@@ -1003,6 +1003,7 @@ h1, h2, h3 {
   padding: 10px 12px; border-radius: 8px; background: var(--chip); border: 1px solid var(--line); margin-bottom: 6px; font-size: 15px; font-weight: 600;
 }
 .players .team-tag { margin-left: auto; font-size: 12px; font-weight: 400; color: var(--muted); }
+.players .kick { margin-left: 8px; width: 30px; height: 30px; border-radius: 6px; border: 1px solid var(--line-strong); background: transparent; color: var(--muted); font-size: 13px; flex: 0 0 auto; }
 .tag { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; background: var(--chip); color: var(--muted); }
 
 .dot {
