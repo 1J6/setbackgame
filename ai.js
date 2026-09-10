@@ -416,12 +416,12 @@ export function choosePlay(infoSet, rng, numWorlds = 64, opts = {}) {
   // identically): prefer what the rollout policy would do, otherwise the
   // higher card when leading and the cheaper card when following.
   // Leading a sure-winner trump is what people expect; it gets a wider window
-  // (about a sixth of a point) since half of the search's deviations from it
-  // are within noise anyway.
+  // (0.08 points, measured neutral in self-play; 0.15 cost a little) since
+  // many of the search's deviations from it are within noise anyway.
   const pol = policyPlay(hand, p, seat);
   const leading = p.CurrentTrick.Cards.length === 0;
   const sureTrumpLead = leading && p.Trump !== null && Card.suit(pol) === p.Trump && Card.rank(pol) > topOutstandingTrump(hand, p);
-  const eps = opts.tieEps !== undefined ? opts.tieEps : sureTrumpLead ? 0.15 : 0.02;
+  const eps = opts.tieEps !== undefined ? opts.tieEps : sureTrumpLead ? 0.08 : 0.02;
   const ties = cands.filter((c) => values[c] >= bestV - eps);
   if (ties.length > 1) {
     if (ties.includes(pol)) best = pol;
