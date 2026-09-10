@@ -14,6 +14,7 @@
 <meta property="og:image" content="https://www.setbackgame.com/icon.png">
 <meta name="twitter:card" content="summary">
 <meta name="theme-color" content="#0f2a1f">
+<script>try{var t=localStorage.getItem('lis-setback-theme');if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap">
@@ -23,6 +24,16 @@
     --felt: #1d5a40; --felt-light: #276b4d; --felt-dark: #143d2c; --ink: #0b1d15;
     --cream: #f3ecdc; --ivory: #faf6ec; --muted: rgba(243, 236, 220, 0.62); --brass: #d9b45a;
     --line: rgba(255, 255, 255, 0.12);
+    --line-strong: rgba(255, 255, 255, 0.22);
+  }
+  /* Table colour chosen in the game's settings (same keys as setback.css) */
+  html[data-theme="navy"] { --felt: #1e2f57; --felt-light: #283d6e; --felt-dark: #131f3d; --ink: #0a1024; }
+  html[data-theme="black"] { --felt: #1b1b1d; --felt-light: #28282b; --felt-dark: #0b0b0c; --ink: #000; --line: rgba(255, 255, 255, 0.14); }
+  html[data-theme="white"] {
+    color-scheme: light;
+    --felt: #efeae0; --felt-light: #f7f3ea; --felt-dark: #ddd5c3;
+    --cream: #1e2a23; --ivory: #1e2a23; --ink: #f6f1e6; --muted: rgba(30, 42, 35, 0.62); --brass: #b8902f;
+    --line: rgba(0, 0, 0, 0.12); --line-strong: rgba(0, 0, 0, 0.26);
   }
   html { background: var(--felt-dark); }
   body {
@@ -44,11 +55,11 @@
   p, li { margin: 6px 0; }
   ul { padding-left: 22px; }
   li::marker { color: var(--brass); }
-  a { color: var(--cream); text-decoration: underline; text-decoration-color: rgba(255,255,255,.3); text-underline-offset: 3px; }
+  a { color: var(--cream); text-decoration: underline; text-decoration-color: var(--line-strong); text-underline-offset: 3px; }
   .eyebrow { font-size: 10.5px; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--brass); margin: 0; }
   .back {
     display: inline-block; margin: 4px 0 16px; padding: 9px 14px; border-radius: 8px;
-    border: 1px solid rgba(255,255,255,.22); color: var(--cream); font-weight: 600; font-size: 14px; text-decoration: none;
+    border: 1px solid var(--line-strong); color: var(--cream); font-weight: 600; font-size: 14px; text-decoration: none;
   }
   .back.solid { background: var(--ivory); color: var(--ink); border-color: transparent; margin-top: 18px; }
   table { border-collapse: collapse; margin: 10px 0; width: 100%; }
@@ -58,7 +69,7 @@
   .tip { text-align: center; margin: 28px 0 6px; }
   .tip a {
     display: inline-block; padding: 9px 16px; border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.22); color: var(--cream); font-size: 14px; font-weight: 600; text-decoration: none;
+    border: 1px solid var(--line-strong); color: var(--cream); font-size: 14px; font-weight: 600; text-decoration: none;
   }
 </style>
 </head>
