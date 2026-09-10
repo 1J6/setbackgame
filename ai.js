@@ -351,12 +351,23 @@ export function choosePlay(infoSet, rng, numWorlds = 64) {
   const team = teamOfSeat(seat);
   const bidderTeam = teamOfSeat(p.Bidder);
 
+  // The opening lead names trump, and the conventional lead is the top card
+  // of the suit (it draws trumps and secures High); restricting the candidates
+  // to the highest card of each suit tested as strength-neutral in self-play
+  // and avoids odd-looking low leads.
+  let cands = legal;
+  if (p.Trump === null) {
+    const tops = new Set();
+    for (let s = 0; s < NUM_SUITS; s++) { const h = highestOfSuit(hand, s); if (h >= 0) tops.add(h); }
+    cands = legal.filter((c) => tops.has(c));
+  }
+
   const worlds = [];
   for (let i = 0; i < numWorlds; i++) worlds.push(sampleHands(seat, hand, deal, rng));
 
   const values = {};
-  let best = legal[0], bestV = -Infinity;
-  for (const card of legal) {
+  let best = cands[0], bestV = -Infinity;
+  for (const card of cands) {
     let total = 0;
     for (const hands of worlds) {
       let d = { ClosedDeal: deal, Hands: hands };
@@ -366,6 +377,19 @@ export function choosePlay(infoSet, rng, numWorlds = 64) {
     const v = total / worlds.length;
     values[card] = v;
     if (v > bestV + 1e-9) { bestV = v; best = card; }
+  }
+
+  // Near-equal candidates (the rollouts often rate the ace and king of trump
+  // identically): prefer what the rollout policy would do, otherwise the
+  // higher card when leading and the cheaper card when following.
+  const ties = cands.filter((c) => values[c] >= bestV - 0.02);
+  if (ties.length > 1) {
+    const pol = policyPlay(hand, p, seat);
+    if (ties.includes(pol)) best = pol;
+    else {
+      const leading = p.CurrentTrick.Cards.length === 0;
+      best = ties.reduce((a, b) => ((leading ? Card.rank(b) > Card.rank(a) : Card.rank(b) < Card.rank(a)) ? b : a));
+    }
   }
   return { card: best, values };
 }

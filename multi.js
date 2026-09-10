@@ -681,7 +681,7 @@ function scheduleTakeover() {
     const b = parseBlob(cur);
     if (seat !== null) {
       const info = Game.currentInfoSet(b.game);
-      const { action } = chooseAction(info, rng, 120);
+      const { action } = chooseAction(info, rng, 200);
       await tx((r) => (r.version !== version ? undefined : applyGameAction(r, seat, action)));
     } else {
       await tx((r) => (r.version !== version ? undefined : applyNextDeal(r)));
