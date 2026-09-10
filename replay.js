@@ -24,7 +24,13 @@ export function seededRng(seed) {
   };
 }
 
-export const newSeed = () => Math.floor(Math.random() * 4294967296);
+/// A fresh 32-bit seed from the platform's cryptographic generator when
+/// available (browsers and Node), else Math.random.
+export const newSeed = () => {
+  const c = globalThis.crypto;
+  if (c && c.getRandomValues) return c.getRandomValues(new Uint32Array(1))[0];
+  return Math.floor(Math.random() * 4294967296);
+};
 
 /// The store may hand back the move list as an array or as an object keyed by
 /// index; normalise to a dense array, stopping at the first gap.
