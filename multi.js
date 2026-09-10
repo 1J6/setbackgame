@@ -9,6 +9,7 @@
 import { Bid, teamOfSeat, OpenDeal, Game } from './engine.js';
 import { chooseAction } from './ai.js';
 import { replay, validate, movesArray, newSeed } from './replay.js';
+import { saveGameRecord } from './history.js';
 import {
   $, sleep, renderTable, resetTableCache, showScreen, setScreenHtml, setSheet, toast, escapeHtml,
   dealSummaryHtml, gameOverHtml, fmtTime, rulesBlurb, tipHtml, armTap, nextTheme, themeLabel,
@@ -47,7 +48,7 @@ let S = null; // { store, pid, code, ref, room, unsub, stopPresence }
 const ui = {
   dealNo: -1, completed: 0, showTrick: null, trickWinner: null, trickTimer: null,
   busy: false, noticeId: null, takeoverTimer: null, tick: null, pendingName: null, intent: null, leaving: false,
-  starting: false, openKey: null,
+  starting: false, openKey: null, savedGame: null,
 };
 
 // ---------------------------------------------------------------- chat
@@ -313,7 +314,7 @@ function detach() {
   clearTimeout(ui.takeoverTimer); clearInterval(ui.tick); clearTimeout(ui.trickTimer);
   ui.takeoverTimer = null; ui.tick = null; ui.trickTimer = null; ui.showTrick = null; ui.dealNo = -1;
   stCache.code = null; stCache.len = -1; stCache.st = null;
-  ui.openKey = null; ui.starting = false;
+  ui.openKey = null; ui.starting = false; ui.savedGame = null;
 }
 
 async function leaveRoom() {
@@ -618,6 +619,18 @@ function onRoom(room) {
   updateOpenIndex(room);
   const st = stateOf(room);
   if (st.corrupt || !st.game) return;
+
+  // a finished game goes into this device's history once
+  const my = me(room);
+  if (st.phase === 'gameOver' && my.seat !== undefined && ui.savedGame !== `${room.code}:${st.gameNo}`) {
+    ui.savedGame = `${room.code}:${st.gameNo}`;
+    const names = [0, 1, 2, 3].map((s) => { const p = pidAtSeat(room, s); return p ? p.name : '—'; });
+    saveGameRecord({
+      id: `m${room.code}-${st.gameNo}-${st.lastT}`, t: st.lastT || now(), mode: room.public ? 'quick' : 'multi', mySeat: my.seat,
+      names, teamNames: teamNamesOf(room), moves: movesArray(room.moves).slice(st.gameStart || 0, st.seq),
+      winner: st.winner, score: st.game.Score.slice(), reason: st.reason,
+    });
+  }
 
   // notices
   if (st.notice && st.notice.id !== ui.noticeId) { ui.noticeId = st.notice.id; if (prev) toast(st.notice.text, 1500); }

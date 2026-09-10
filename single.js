@@ -2,6 +2,8 @@
 import { Bid, Seat, SEAT_NAMES, TEAM_NAMES, TEAM_LONG_NAMES, teamOfSeat, seatIncr, Trick, Playout, OpenDeal, Game } from './engine.js';
 import { chooseAction, chooseBid, choosePlay } from './ai.js';
 import { coachBid, coachPlay, reviewBid, reviewPlay } from './coach.js';
+import { newSeed, seededRng, replay } from './replay.js';
+import { saveGameRecord } from './history.js';
 import { judgeDeal, emptyStats, addDealStats } from './rules.js';
 import { $, sleep, renderTable, resetTableCache, showScreen, showSheet, toast, dealSummaryHtml, gameOverHtml, rulesBlurb, tipHtml, nextTheme, themeLabel } from './view.js';
 
@@ -24,10 +26,25 @@ let settings = Object.assign({ speed: 'normal', hints: false, coach: false }, lo
 const hintsOn = () => settings.hints || settings.coach;
 const saveSettings = () => store(SETTINGS_KEY, settings);
 
+// Deals are seeded and every action is appended to `pers.log`, so a finished
+// game is a move log (see replay.js) that can be saved and replayed.
+function createDeal(log, dealer) {
+  const seed = newSeed();
+  if (log) log.push({ d: seed, l: dealer, t: Date.now() });
+  return Game.create(seededRng(seed), dealer);
+}
+function nextDeal(game, allPass) {
+  const seed = newSeed();
+  if (allPass && pers.log && pers.log.length) pers.log[pers.log.length - 1].d = seed; // the pass that ended the auction carries the redeal
+  else if (pers.log) pers.log.push({ d: seed, t: Date.now() });
+  return Game.startNextDeal(seededRng(seed), game);
+}
+
 function freshState() {
+  const log = [];
   return {
     version: 2, gamesWon: [0, 0], finished: null, reason: null,
-    game: Game.create(rng, Seat.South),
+    game: createDeal(log, Seat.South), log,
     stats: { game: emptyStats(), total: emptyStats() },
     scoreBefore: [0, 0],
   };
@@ -45,6 +62,7 @@ if (pers.version === 1) {
   // carry over a v1 game; the game score before the current deal is the current score
   pers = { ...pers, version: 2, reason: null, stats: { game: emptyStats(), total: emptyStats() }, scoreBefore: pers.game.Score.slice() };
 }
+if (!Array.isArray(pers.log)) pers.log = null; // a game saved before logging existed cannot be recorded
 const save = () => store(STORAGE_KEY, pers);
 
 const timing = () => settings.speed === 'fast'
@@ -101,7 +119,8 @@ async function showMenu() {
     if (action === 'newgame') {
       if (!armNew) { armNew = true; continue; }
       {
-        pers.game = Game.create(rng, seatIncr(1, pers.game.Deal.ClosedDeal.Auction.Dealer));
+        pers.log = [];
+        pers.game = createDeal(pers.log, seatIncr(1, pers.game.Deal.ClosedDeal.Auction.Dealer));
         pers.finished = null; pers.reason = null; pers.stats.game = emptyStats(); pers.scoreBefore = [0, 0];
         save();
         location.reload();
@@ -167,6 +186,7 @@ async function aiAction(info) {
 }
 
 async function applyAction(action) {
+  if (pers.log) pers.log.push(action.bid !== undefined ? { b: action.bid, t: Date.now() } : { c: action.card, t: Date.now() });
   const before = pers.game;
   pers.game = Game.addAction(action, pers.game);
   save();
@@ -217,6 +237,21 @@ async function runDeal() {
   return judged;
 }
 
+/// Saves the finished game to the device history if its log replays cleanly.
+function recordGame(winner) {
+  if (!pers.log || !pers.log.length) return;
+  const chk = replay(pers.log);
+  if (chk.corrupt || !chk.game || JSON.stringify(chk.game.Score) !== JSON.stringify(pers.game.Score)) {
+    console.warn('history: the game log did not replay to the final score; not saved');
+    return;
+  }
+  saveGameRecord({
+    id: 's' + Date.now(), t: Date.now(), mode: 'single', mySeat: USER,
+    names: ['West', 'North', 'East', 'You'], teamNames: TEAM_LONG_NAMES,
+    moves: pers.log, winner, score: pers.game.Score.slice(), reason: pers.reason,
+  });
+}
+
 async function runGame() {
   while (true) {
     let judged = null;
@@ -228,17 +263,19 @@ async function runGame() {
         pers.reason = judged.reason;
         pers.gamesWon[winner] += 1;
         save();
+        recordGame(winner);
       }
       render();
       await showSheet(gameOverHtml(winner, pers.reason, TEAM_LONG_NAMES, pers.game.Score, pers.stats.game, pers.stats.total, pers.gamesWon, teamOfSeat(USER)) +
         `<div class="actions"><button type="button" class="btn" data-action="next">New game</button></div>`);
-      pers.game = Game.create(rng, seatIncr(1, pers.game.Deal.ClosedDeal.Auction.Dealer));
+      pers.log = [];
+      pers.game = createDeal(pers.log, seatIncr(1, pers.game.Deal.ClosedDeal.Auction.Dealer));
       pers.finished = null; pers.reason = null; pers.stats.game = emptyStats(); pers.scoreBefore = [0, 0]; pers.dealCounted = false;
       save();
       resetTableCache();
       return;
     }
-    pers.game = Game.startNextDeal(rng, pers.game);
+    pers.game = nextDeal(pers.game, judged === null);
     pers.scoreBefore = pers.game.Score.slice();
     pers.dealCounted = false;
     save();

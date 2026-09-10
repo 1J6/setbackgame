@@ -540,6 +540,68 @@ h1, h2, h3 {
 .coach b { font-weight: 700; }
 .coach .suit-red { color: var(--red-soft); }
 
+/* replay viewer controls */
+.replay-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0 auto 8px;
+  max-width: 560px;
+}
+.replay-bar[hidden] { display: none; }
+.replay-bar button {
+  min-width: 44px;
+  height: 40px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cream);
+  font-family: var(--display);
+  font-size: 22px;
+  line-height: 1;
+}
+.replay-bar button:disabled { opacity: 0.35; }
+.replay-bar .replay-pos { min-width: 64px; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.replay-bar .replay-exit { font-family: var(--sans); font-size: 14px; font-weight: 600; padding: 0 14px; background: var(--ivory); color: var(--ink); border-color: transparent; }
+
+/* history list and stats */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+.stat {
+  padding: 10px 8px;
+  border-radius: 8px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  text-align: center;
+}
+.stat .v { display: block; font-family: var(--display); font-size: 22px; font-weight: 600; line-height: 1.1; }
+.stat .l { display: block; margin-top: 3px; font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.games { list-style: none; margin: 0; padding: 0; }
+.games li { margin-bottom: 6px; }
+.games button {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  color: var(--cream);
+  text-align: left;
+  font-size: 14px;
+}
+.games .res { font-family: var(--display); font-size: 18px; font-weight: 600; min-width: 64px; }
+.games .res.won { color: var(--brass); }
+.games .who { flex: 1; min-width: 0; }
+.games .who small { display: block; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.games .when { font-size: 11px; color: var(--muted); white-space: nowrap; }
+
 @keyframes popY {
   from { transform: translateY(6px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }

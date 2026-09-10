@@ -41,7 +41,7 @@ export function movesArray(m) {
 
 export function emptyState() {
   return {
-    seq: 0, game: null, phase: 'none', dealNo: -1, gameNo: 0,
+    seq: 0, game: null, phase: 'none', dealNo: -1, gameNo: 0, gameStart: 0,
     scoreBefore: [0, 0], lastDeal: null, winner: null, reason: null, notice: null, lastT: 0,
     stats: { game: emptyStats(), total: { ...emptyStats(), games: [0, 0] } },
   };
@@ -113,6 +113,7 @@ export function apply(st, move) {
       if (!(dealer >= 0 && dealer < 4)) throw new Error('bad dealer');
       next.game = Game.create(rng, dealer);
       next.gameNo = st.phase === 'gameOver' ? st.gameNo + 1 : st.gameNo;
+      next.gameStart = st.seq; // index of this game's first move, for saving history
       next.stats.game = emptyStats();
       next.scoreBefore = [0, 0];
     } else if (st.phase === 'dealOver') {

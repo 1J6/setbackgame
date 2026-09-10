@@ -354,6 +354,16 @@ export function dealSummaryHtml(judged, names, teamNames) {
     `</tbody></table>` + endNote;
 }
 
+/// One-line deal result for compact places (replay viewer).
+export function explainSummary(j, teamNames) {
+  if (!j || j.allPass) return '<b>Everyone passed.</b> Dealing again.';
+  const who = escapeHtml(teamNames[j.bidderTeam]);
+  const line = j.set
+    ? `${who} bid ${j.bid} and took ${j.raw[j.bidderTeam]}: <b>set back ${j.bid}</b>.`
+    : `${who} bid ${j.bid} and made it with ${j.raw[j.bidderTeam]}.`;
+  return `<b>Deal over.</b> ${line} Score ${j.scoreAfter[0]}–${j.scoreAfter[1]}.`;
+}
+
 /// Game-over summary (no buttons).
 export function gameOverHtml(winner, reason, teamNames, score, statsGame, statsTotal, gamesWon, youTeam) {
   const you = youTeam === winner;
