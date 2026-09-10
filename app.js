@@ -20,7 +20,7 @@ function homeHtml(multiNote) {
     `</div>` +
     (multiNote ? `<p class="error">${multiNote}</p>` : '') +
     `<p class="credit"><a href="rules.html">Rules of Setback</a> &nbsp;·&nbsp; ` +
-    `Engine ported from <a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">Brian Berns' Setback</a></p>` +
+    `Heavily modified from Brian Berns' Setback <a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">rules engine</a></p>` +
     tipHtml() +
     `</div>`;
 }

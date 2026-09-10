@@ -81,9 +81,8 @@ async function showMenu() {
     `<button type="button" class="btn danger" data-action="newgame">Abandon this game and start over</button>` +
     `<button type="button" class="btn secondary" data-action="close">Close</button>` +
     `</div>` + rulesBlurb() +
-    `<p class="credit">You play South; North is your partner. Rules and scoring follow ` +
-    `<a href="https://www.bernsrite.com/Setback/" target="_blank" rel="noopener">Brian Berns' Setback</a>, whose F# game engine ` +
-    `(<a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">source</a>) this page ports to JavaScript. ` +
+    `<p class="credit">You play South; North is your partner. Heavily modified from Brian Berns' Setback ` +
+    `<a href="https://github.com/brianberns/Setback" target="_blank" rel="noopener">rules engine</a>. ` +
     `The computer players use a Monte Carlo search that runs entirely on your phone. Progress is saved on this device.</p>` + tipHtml();
   while (true) {
     const action = await showSheet(html());

@@ -3,7 +3,7 @@
 Mobile-first Setback (Auction Pitch) for four: single player against computer opponents, or four
 friends in a shared room with chat. Static site served by GitHub Pages at https://www.setbackgame.com.
 
-Rules engine ported from [Brian Berns' Setback](https://github.com/brianberns/Setback). See `CLAUDE.md` for the file map,
+Heavily modified from Brian Berns' Setback [rules engine](https://github.com/brianberns/Setback). See `CLAUDE.md` for the file map,
 multiplayer model, and how to test.
 
 - `npm test` runs the rules and engine tests.
